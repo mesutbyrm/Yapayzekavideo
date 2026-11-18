@@ -1,0 +1,23 @@
+{
+  "name": "@asf/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "dev:scheduler": "tsx watch src/scheduler.ts",
+    "start": "tsx src/worker.ts",
+    "start:scheduler": "tsx src/scheduler.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@asf/core": "workspace:*",
+    "bullmq": "6.7.7",
+    "dotenv": "17.4.2",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

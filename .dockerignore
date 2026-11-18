@@ -1,0 +1,14 @@
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+!.env.example
+.git
+storage
+backups
+**/test-results
+**/playwright-report
+apps/web/e2e/.auth.json
+**/*.tsbuildinfo
+packages/core/src/generated
+docs

@@ -1,0 +1,72 @@
+/** Varsayılan dil Türkçe. İngilizce sözlük gelecekte doldurulmak üzere yapılandırıldı. */
+export const dict = {
+  tr: {
+    nav: {
+      dashboard: "Dashboard",
+      generate: "Video Üret",
+      automation: "Otomatik Üretim",
+      calendar: "İçerik Takvimi",
+      library: "Video Kütüphanesi",
+      queue: "Yayın Kuyruğu",
+      history: "Yayın Geçmişi",
+      accounts: "Sosyal Medya Hesapları",
+      brands: "Markalar",
+      categories: "İçerik Kategorileri",
+      analytics: "Analizler",
+      costs: "Maliyet Yönetimi",
+      integrations: "API Bağlantıları",
+      notifications: "Bildirimler",
+      settings: "Sistem Ayarları",
+    },
+  },
+  en: {
+    nav: {
+      dashboard: "Dashboard",
+      generate: "Generate Video",
+      automation: "Automation",
+      calendar: "Content Calendar",
+      library: "Video Library",
+      queue: "Publish Queue",
+      history: "Publish History",
+      accounts: "Social Accounts",
+      brands: "Brands",
+      categories: "Content Categories",
+      analytics: "Analytics",
+      costs: "Cost Management",
+      integrations: "API Connections",
+      notifications: "Notifications",
+      settings: "System Settings",
+    },
+  },
+} as const;
+
+export type Locale = keyof typeof dict;
+export const t = (locale: string = "tr") => dict[(locale in dict ? locale : "tr") as Locale];
+
+export const STATUS_TR: Record<string, string> = {
+  QUEUED: "Sırada",
+  SCRIPTING: "Senaryo",
+  FETCHING_MEDIA: "Medya",
+  VOICING: "Seslendirme",
+  RENDERING: "Montaj",
+  QUALITY_CHECK: "Kalite kontrol",
+  READY: "Hazır",
+  QC_FAILED: "QC başarısız",
+  FAILED: "Başarısız",
+  PUBLISHING: "Yayınlanıyor",
+  PUBLISHED: "Yayınlandı",
+  PARTIALLY_PUBLISHED: "Kısmen yayınlandı",
+  CANCELLED: "İptal",
+  PENDING: "Bekliyor",
+  SCHEDULED: "Zamanlandı",
+  AWAITING_CONSENT: "Onay bekliyor",
+  RUNNING: "Çalışıyor",
+  PROCESSING: "İşleniyor",
+  SUCCEEDED: "Başarılı",
+  BLOCKED: "Engellendi",
+  CONNECTED: "Bağlı",
+  TOKEN_EXPIRED: "Token süresi doldu",
+  REVOKED: "İptal edildi",
+  ERROR: "Hata",
+  DISCONNECTED: "Bağlantı kesildi",
+};

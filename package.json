@@ -1,0 +1,19 @@
+{
+  "name": "ai-social-factory",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev:web": "pnpm --filter @asf/web dev",
+    "dev:worker": "pnpm --filter @asf/worker dev",
+    "dev:scheduler": "pnpm --filter @asf/worker dev:scheduler",
+    "build": "pnpm --filter @asf/core db:generate && pnpm --filter @asf/web build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @asf/core test",
+    "test:e2e": "pnpm --filter @asf/web test:e2e",
+    "db:migrate": "pnpm --filter @asf/core db:migrate",
+    "db:deploy": "pnpm --filter @asf/core db:deploy",
+    "db:seed": "pnpm --filter @asf/core db:seed"
+  }
+}
