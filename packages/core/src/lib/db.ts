@@ -10,7 +10,18 @@ function create() {
   return new PrismaClient({ adapter });
 }
 
-export const prisma: PrismaClient = globalForPrisma.__asfPrisma ?? create();
-if (process.env.NODE_ENV !== "production") globalForPrisma.__asfPrisma = prisma;
+function client(): PrismaClient {
+  // Tembel oluşturma: modül içe aktarılırken (ör. derleme sırasında) veritabanı bağlantısı gerekmez
+  globalForPrisma.__asfPrisma ??= create();
+  return globalForPrisma.__asfPrisma;
+}
+
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_t, prop) {
+    const c = client();
+    const v = Reflect.get(c, prop, c);
+    return typeof v === "function" ? v.bind(c) : v;
+  },
+});
 
 export * from "../generated/prisma/client";

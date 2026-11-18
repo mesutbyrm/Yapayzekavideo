@@ -100,7 +100,9 @@ let cached: Env | null = null;
 
 export function env(): Env {
   if (!cached) {
-    const parsed = schema.safeParse(process.env);
+    // Boş değerler (ör. .env'de "KEY=") tanımsız kabul edilir; varsayılanlar devreye girer
+    const raw = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined && v.trim() !== ""));
+    const parsed = schema.safeParse(raw);
     if (!parsed.success) {
       throw new Error(
         "Geçersiz ortam değişkenleri: " +
