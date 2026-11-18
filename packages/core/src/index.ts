@@ -32,3 +32,7 @@ export * from "./pipeline/scheduler";
 export * from "./pipeline/maintenance";
 export * from "./analytics/insights";
 export * from "./analytics/collect";
+export { probe, ffmpeg } from "./video/ffmpeg";
+export { resolveSceneMedia } from "./media/resolve";
+export { aiImagesEnabled } from "./media/ai-image";
+export { metaConfigured } from "./publishers/meta";
