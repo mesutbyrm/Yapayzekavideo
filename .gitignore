@@ -12,3 +12,6 @@ backups/
 playwright-report
 test-results
 packages/core/src/generated
+apps/web/e2e/.auth.json
+*.tsbuildinfo
+playwright-report/

@@ -30,10 +30,13 @@ export function narrationHash(narration: string) {
   return sha256(normalizeText(narration));
 }
 
-/** Jaccard benzerliği (0-1) – yakın tekrarları yakalamak için */
+/** Türkçe eklemeli yapı için basit kök yaklaşımı: ilk 5 harf (ahtapotların → ahtap) */
+const stem = (t: string) => t.slice(0, 5);
+
+/** Jaccard benzerliği (0-1) – yakın tekrarları yakalamak için (kök bazlı) */
 export function similarity(a: string, b: string) {
-  const A = new Set(tokens(a));
-  const B = new Set(tokens(b));
+  const A = new Set(tokens(a).map(stem));
+  const B = new Set(tokens(b).map(stem));
   if (!A.size || !B.size) return 0;
   let inter = 0;
   for (const t of A) if (B.has(t)) inter++;
