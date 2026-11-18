@@ -1,0 +1,634 @@
+// AI Social Factory – veritabanı şeması
+// Bütün markalı veriler brandId ile ilişkilendirilir (çok kiracılı izolasyon).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum BrandRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum Platform {
+  INSTAGRAM
+  FACEBOOK
+  TIKTOK
+  YOUTUBE
+}
+
+enum SocialAccountStatus {
+  CONNECTED
+  TOKEN_EXPIRED
+  REVOKED
+  ERROR
+  DISCONNECTED
+}
+
+enum IdeaStatus {
+  NEW
+  SCRIPTED
+  REJECTED
+  USED
+}
+
+enum ScriptStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+}
+
+enum MediaKind {
+  VIDEO
+  IMAGE
+  AUDIO
+  MUSIC
+  LOGO
+}
+
+enum MediaSource {
+  STOCK
+  LIBRARY
+  AI_IMAGE
+  GENERATED
+  TTS
+  UPLOAD
+}
+
+enum VideoStatus {
+  QUEUED
+  SCRIPTING
+  FETCHING_MEDIA
+  VOICING
+  RENDERING
+  QUALITY_CHECK
+  READY
+  QC_FAILED
+  FAILED
+  PUBLISHING
+  PUBLISHED
+  PARTIALLY_PUBLISHED
+  CANCELLED
+}
+
+enum PublishJobStatus {
+  PENDING
+  SCHEDULED
+  AWAITING_CONSENT
+  RUNNING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  BLOCKED
+}
+
+enum NotificationType {
+  VIDEO_GENERATED
+  VIDEO_FAILED
+  PUBLISH_SUCCEEDED
+  PUBLISH_FAILED
+  TOKEN_EXPIRED
+  CONNECTION_LOST
+  BUDGET_LIMIT
+  DAILY_TARGET_REACHED
+  SYSTEM_ERROR
+}
+
+enum NotificationSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum UsageProvider {
+  OPENAI
+  GOOGLE_TTS
+  STOCK_MEDIA
+  AI_IMAGE
+  AI_VIDEO
+  STORAGE
+  SERVER
+  OTHER
+}
+
+// ───────────────────────────── Kullanıcı & oturum ─────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          UserRole  @default(USER)
+  locale        String    @default("tr")
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  failedLogins  Int       @default(0)
+  lockedUntil   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions      Session[]
+  memberships   BrandMember[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  csrfToken  String
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model BrandMember {
+  id        String    @id @default(cuid())
+  brandId   String
+  userId    String
+  role      BrandRole @default(EDITOR)
+  createdAt DateTime  @default(now())
+  brand     Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, userId])
+  @@index([userId])
+}
+
+// ───────────────────────────── Marka ─────────────────────────────
+
+model Brand {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  description        String?
+  website            String?
+  logoAssetId        String?
+  language           String   @default("tr-TR")
+  targetAudience     String?
+  primaryColor       String   @default("#7C3AED")
+  secondaryColor     String   @default("#0EA5E9")
+  accentColor        String   @default("#F59E0B")
+  fontFamily         String   @default("DejaVu Sans")
+  voiceName          String   @default("tr-TR-Wavenet-A")
+  voiceGender        String   @default("FEMALE")
+  speakingRate       Float    @default(1.05)
+  voicePitch         Float    @default(0)
+  videoTemplate      String   @default("modern")
+  dailyVideoTarget   Int      @default(3)
+  monthlyVideoTarget Int      @default(90)
+  minDurationSec     Int      @default(20)
+  maxDurationSec     Int      @default(30)
+  publishTimes       String[] @default(["10:00", "15:00", "20:00"])
+  timezone           String   @default("Europe/Istanbul")
+  hashtags           String[] @default([])
+  contentRules       String?
+  monthlyBudgetUsd   Decimal  @default(25) @db.Decimal(10, 2)
+  maxBudgetUsd       Decimal  @default(50) @db.Decimal(10, 2)
+  autoGenerate       Boolean  @default(true)
+  autoPublish        Boolean  @default(true)
+  musicEnabled       Boolean  @default(true)
+  musicVolume        Float    @default(0.12)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  members        BrandMember[]
+  socialAccounts SocialAccount[]
+  categories     ContentCategory[]
+  ideas          ContentIdea[]
+  scripts        VideoScript[]
+  mediaAssets    MediaAsset[]
+  videos         Video[]
+  publishJobs    PublishJob[]
+  publishResults PublishResult[]
+  analytics      AnalyticsSnapshot[]
+  schedules      Schedule[]
+  usageLogs      AIUsageLog[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  oauthTokens    OAuthToken[]
+}
+
+// ───────────────────────────── Sosyal hesaplar ─────────────────────────────
+
+model SocialAccount {
+  id                String              @id @default(cuid())
+  brandId           String
+  brand             Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  platform          Platform
+  externalId        String
+  displayName       String
+  username          String?
+  avatarUrl         String?
+  status            SocialAccountStatus @default(CONNECTED)
+  scopes            String[]            @default([])
+  // Platforma özel ek veri (ör. Facebook pageId, Instagram igUserId, TikTok creator info)
+  meta              Json?
+  // TikTok: denetim (audit) durumu. false ise yalnızca SELF_ONLY yayın yapılabilir.
+  directPostAudited Boolean             @default(false)
+  autoPublish       Boolean             @default(true)
+  lastError         String?
+  lastCheckedAt     DateTime?
+  connectedAt       DateTime            @default(now())
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  token          OAuthToken?
+  publishJobs    PublishJob[]
+  publishResults PublishResult[]
+  analytics      AnalyticsSnapshot[]
+
+  @@unique([brandId, platform, externalId])
+  @@index([brandId, platform])
+}
+
+/// Tokenlar AES-256-GCM ile şifrelenir (ciphertext alanları). Düz metin token asla saklanmaz.
+model OAuthToken {
+  id                    String        @id @default(cuid())
+  brandId               String
+  brand                 Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  socialAccountId       String        @unique
+  socialAccount         SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  accessTokenEnc        String
+  refreshTokenEnc       String?
+  tokenType             String        @default("Bearer")
+  expiresAt             DateTime?
+  refreshExpiresAt      DateTime?
+  keyVersion            Int           @default(1)
+  lastRefreshedAt       DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([brandId])
+  @@index([expiresAt])
+}
+
+/// OAuth akışı sırasında state/PKCE doğrulaması için kısa ömürlü kayıt.
+model OAuthState {
+  id           String   @id @default(cuid())
+  state        String   @unique
+  brandId      String
+  userId       String
+  platform     Platform
+  codeVerifier String?
+  redirectTo   String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+// ───────────────────────────── İçerik ─────────────────────────────
+
+model ContentCategory {
+  id          String        @id @default(cuid())
+  brandId     String
+  brand       Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  keywords    String[]      @default([])
+  weight      Int           @default(1)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  ideas       ContentIdea[]
+
+  @@unique([brandId, name])
+  @@index([brandId])
+}
+
+model ContentIdea {
+  id          String           @id @default(cuid())
+  brandId     String
+  brand       Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    ContentCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  topic       String
+  angle       String?
+  /// Normalleştirilmiş konu parmak izi – tekrar engelleme için
+  fingerprint String
+  status      IdeaStatus       @default(NEW)
+  score       Float?
+  source      String           @default("ai")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  scripts     VideoScript[]
+
+  @@unique([brandId, fingerprint])
+  @@index([brandId, status])
+}
+
+model VideoScript {
+  id               String       @id @default(cuid())
+  brandId          String
+  brand            Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  ideaId           String?
+  idea             ContentIdea? @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  title            String
+  hook             String
+  narration        String
+  scenes           Json
+  cta              String
+  hashtags         String[]     @default([])
+  platformMetadata Json
+  raw              Json
+  model            String
+  attempts         Int          @default(1)
+  safetyFlags      String[]     @default([])
+  status           ScriptStatus @default(APPROVED)
+  /// Anlatım metninin normalleştirilmiş özeti – birebir tekrarları engeller
+  narrationHash    String
+  createdAt        DateTime     @default(now())
+  videos           Video[]
+
+  @@unique([brandId, narrationHash])
+  @@index([brandId, createdAt])
+}
+
+// ───────────────────────────── Medya ─────────────────────────────
+
+model MediaAsset {
+  id             String      @id @default(cuid())
+  brandId        String?
+  brand          Brand?      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  kind           MediaKind
+  source         MediaSource
+  provider       String
+  providerId     String?
+  sourceUrl      String?
+  storageKey     String?
+  mimeType       String?
+  width          Int?
+  height         Int?
+  durationSec    Float?
+  sizeBytes      BigInt?
+  license        String
+  licenseUrl     String?
+  commercialUse  Boolean     @default(false)
+  attribution    String?
+  author         String?
+  tags           String[]    @default([])
+  downloadedAt   DateTime?
+  usageCount     Int         @default(0)
+  createdAt      DateTime    @default(now())
+
+  @@unique([provider, providerId, brandId])
+  @@index([brandId, kind])
+}
+
+// ───────────────────────────── Video ─────────────────────────────
+
+model Video {
+  id            String        @id @default(cuid())
+  brandId       String
+  brand         Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  scriptId      String?
+  script        VideoScript?  @relation(fields: [scriptId], references: [id], onDelete: SetNull)
+  scheduleSlot  DateTime?
+  title         String?
+  status        VideoStatus   @default(QUEUED)
+  storageKey    String?
+  thumbnailKey  String?
+  durationSec   Float?
+  width         Int?
+  height        Int?
+  fps           Float?
+  sizeBytes     BigInt?
+  qcPassed      Boolean?
+  qcReport      Json?
+  /// Kullanılan medya varlıkları ve lisansları
+  mediaManifest Json?
+  errorMessage  String?
+  costUsd       Decimal       @default(0) @db.Decimal(10, 4)
+  trigger       String        @default("auto")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  completedAt   DateTime?
+
+  variants       VideoVariant[]
+  publishJobs    PublishJob[]
+  publishResults PublishResult[]
+  analytics      AnalyticsSnapshot[]
+  usageLogs      AIUsageLog[]
+
+  /// Aynı marka + aynı zaman dilimi için ikinci otomatik üretim engellenir
+  @@unique([brandId, scheduleSlot])
+  @@index([brandId, status])
+  @@index([brandId, createdAt])
+}
+
+model VideoVariant {
+  id         String   @id @default(cuid())
+  videoId    String
+  video      Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  platform   Platform
+  storageKey String
+  sizeBytes  BigInt?
+  checks     Json?
+  createdAt  DateTime @default(now())
+
+  @@unique([videoId, platform])
+}
+
+// ───────────────────────────── Yayın ─────────────────────────────
+
+model PublishJob {
+  id              String           @id @default(cuid())
+  brandId         String
+  brand           Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  videoId         String
+  video           Video            @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  socialAccountId String
+  socialAccount   SocialAccount    @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  platform        Platform
+  status          PublishJobStatus @default(PENDING)
+  scheduledAt     DateTime
+  /// Idempotency anahtarı: videoId:socialAccountId – aynı video aynı hesaba ikinci kez gönderilmez
+  idempotencyKey  String           @unique
+  attempts        Int              @default(0)
+  maxAttempts     Int              @default(5)
+  externalRef     String?
+  /// Platforma özel yayın seçenekleri (ör. TikTok privacy_level, kullanıcı onayı)
+  options         Json?
+  consentGivenAt  DateTime?
+  consentById     String?
+  lastError       String?
+  lastErrorCode   String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  results         PublishResult[]
+
+  @@unique([videoId, socialAccountId])
+  @@index([status, scheduledAt])
+  @@index([brandId, status])
+}
+
+model PublishResult {
+  id              String        @id @default(cuid())
+  brandId         String
+  brand           Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  publishJobId    String
+  publishJob      PublishJob    @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
+  videoId         String
+  video           Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  socialAccountId String
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  platform        Platform
+  success         Boolean
+  externalPostId  String?
+  postUrl         String?
+  privacy         String?
+  errorCode       String?
+  errorMessage    String?
+  /// Ham platform cevabı (token içermez)
+  response        Json?
+  attempt         Int
+  createdAt       DateTime      @default(now())
+
+  @@index([brandId, createdAt])
+  @@index([platform, success])
+  @@index([videoId])
+}
+
+// ───────────────────────────── Analiz ─────────────────────────────
+
+model AnalyticsSnapshot {
+  id              String         @id @default(cuid())
+  brandId         String
+  brand           Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  videoId         String?
+  video           Video?         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  socialAccountId String
+  socialAccount   SocialAccount  @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  platform        Platform
+  externalPostId  String?
+  /// null = platform bu metriği sağlamıyor (tahmin edilmez)
+  views           Int?
+  likes           Int?
+  comments        Int?
+  shares          Int?
+  saves           Int?
+  followers       Int?
+  reach           Int?
+  raw             Json?
+  capturedAt      DateTime       @default(now())
+
+  @@index([brandId, capturedAt])
+  @@index([videoId, platform, capturedAt])
+  @@index([socialAccountId, capturedAt])
+}
+
+// ───────────────────────────── Zamanlama ─────────────────────────────
+
+model Schedule {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  /// "HH:mm" yerel saat (marka saat dilimi)
+  time      String
+  weekdays  Int[]    @default([1, 2, 3, 4, 5, 6, 7])
+  platforms Platform[] @default([INSTAGRAM, FACEBOOK, TIKTOK, YOUTUBE])
+  /// Yayından kaç dakika önce üretim başlasın
+  leadMinutes Int    @default(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([brandId, time])
+}
+
+// ───────────────────────────── Maliyet ─────────────────────────────
+
+model AIUsageLog {
+  id          String        @id @default(cuid())
+  brandId     String?
+  brand       Brand?        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  videoId     String?
+  video       Video?        @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  provider    UsageProvider
+  operation   String
+  model       String?
+  inputTokens  Int?
+  outputTokens Int?
+  characters  Int?
+  units       Float?
+  costUsd     Decimal       @db.Decimal(12, 6)
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+
+  @@index([brandId, createdAt])
+  @@index([provider, createdAt])
+  @@index([videoId])
+}
+
+// ───────────────────────────── Sistem ─────────────────────────────
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String               @id @default(cuid())
+  brandId   String?
+  brand     Brand?               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  severity  NotificationSeverity @default(INFO)
+  title     String
+  message   String
+  data      Json?
+  readAt    DateTime?
+  emailedAt DateTime?
+  /// Aynı olayın tekrar tekrar bildirilmesini engeller
+  dedupeKey String?              @unique
+  createdAt DateTime             @default(now())
+
+  @@index([userId, readAt])
+  @@index([brandId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  brandId   String?
+  brand     Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String?
+  entityId  String?
+  ip        String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([brandId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
