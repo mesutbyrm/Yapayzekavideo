@@ -7,7 +7,7 @@ dist
 coverage
 *.log
 /tmp
-storage/
+/storage/
 backups/
 playwright-report
 test-results
