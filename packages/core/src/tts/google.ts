@@ -121,6 +121,51 @@ async function synthesizeOnce(text: string, voice: VoiceOptions, outPath: string
   return { words, marks: (resp as any).timepoints ?? [], chars: ssml.length };
 }
 
+function splitTtsChunks(text: string, maxSsmlBytes = 4_500): string[] {
+  const chunks: string[] = [];
+  let current: string[] = [];
+  for (const word of splitWords(text)) {
+    const candidate = [...current, word].join(" ");
+    if (current.length && Buffer.byteLength(buildSsml(candidate).ssml, "utf8") > maxSsmlBytes) {
+      chunks.push(current.join(" "));
+      current = [word];
+    } else {
+      current.push(word);
+    }
+  }
+  if (current.length) chunks.push(current.join(" "));
+  return chunks;
+}
+
+async function synthesizeChunks(text: string, voice: VoiceOptions, workDir: string) {
+  const chunks = splitTtsChunks(text);
+  const files: string[] = [];
+  const words: string[] = [];
+  const marks: Array<{ markName: string; timeSeconds: number }> = [];
+  let durationSec = 0;
+  let characters = 0;
+  let wordOffset = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const file = path.join(workDir, "voice_chunk_" + String(i).padStart(3, "0") + ".mp3");
+    const part = await withRetry(() => synthesizeOnce(chunks[i], voice, file), 3, "google_tts");
+    const chunkDuration = (await probe(file)).durationSec;
+    files.push(file);
+    words.push(...part.words);
+    characters += part.chars;
+    for (const mark of part.marks) {
+      const localIndex = Number(String(mark.markName ?? "").replace(/^w/, ""));
+      if (Number.isFinite(localIndex)) marks.push({ markName: "w" + (wordOffset + localIndex), timeSeconds: durationSec + Number(mark.timeSeconds ?? 0) });
+    }
+    wordOffset += part.words.length;
+    durationSec += chunkDuration;
+  }
+  const listPath = path.join(workDir, "voice_chunks.txt");
+  const rawPath = path.join(workDir, "voice_raw.mp3");
+  await writeFile(listPath, files.map((file) => "file '" + file + "'").join("\n") + "\n");
+  await ffmpeg(["-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", rawPath], Math.max(120, Math.ceil(durationSec / 2)));
+  return { rawPath, words, marks, durationSec, characters };
+}
+
 /**
  * Seslendirme: SSML işaretleriyle kelime zamanlaması, otomatik tekrar deneme,
  * hedef süreye sığdırma (konuşma hızı ayarı) ve EBU R128 ses normalizasyonu.
@@ -138,17 +183,19 @@ export async function synthesizeNarration(opts: {
   const outPath = path.join(opts.workDir, "voice.mp3");
   let rate = opts.voice.speakingRate;
   let words: string[] = [];
-  let marks: any[] = [];
+  let marks: Array<{ markName: string; timeSeconds: number }> = [];
   let totalChars = 0;
+  let rawDurationSec = 0;
 
   for (let pass = 0; pass < 2; pass++) {
-    const est = buildSsml(opts.text).ssml.length;
+    const est = splitTtsChunks(opts.text).reduce((sum, chunk) => sum + Buffer.byteLength(buildSsml(chunk).ssml, "utf8"), 0);
     await assertCanSpend(opts.brandId, ttsCost(est), "tts.synthesize");
-    const r = await withRetry(() => synthesizeOnce(opts.text, { ...opts.voice, speakingRate: rate }, rawPath), 3, "google_tts");
+    const r = await synthesizeChunks(opts.text, { ...opts.voice, speakingRate: rate }, opts.workDir);
     words = r.words;
     marks = r.marks;
-    totalChars += r.chars;
-    await recordUsage({ brandId: opts.brandId, videoId: opts.videoId, provider: "GOOGLE_TTS", operation: "tts.synthesize", model: opts.voice.voiceName, characters: r.chars, costUsd: ttsCost(r.chars) });
+    totalChars = r.characters;
+    rawDurationSec = r.durationSec;
+    await recordUsage({ brandId: opts.brandId, videoId: opts.videoId, provider: "GOOGLE_TTS", operation: "tts.synthesize", model: opts.voice.voiceName, characters: r.characters, costUsd: ttsCost(r.characters) });
     const d = (await probe(rawPath)).durationSec;
     // Hedef: maxDuration - 1.5 sn (kapanış kartı için pay)
     const target = opts.maxDurationSec - 1.5;
@@ -161,7 +208,7 @@ export async function synthesizeNarration(opts: {
   }
 
   // Ses normalizasyonu (EBU R128, -16 LUFS mobil/sosyal standart)
-  await ffmpeg(["-i", rawPath, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000", "-ar", "48000", "-ac", "2", "-c:a", "libmp3lame", "-b:a", "192k", outPath], 120);
+  await ffmpeg(["-i", rawPath, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000", "-ar", "48000", "-ac", "2", "-c:a", "libmp3lame", "-b:a", "192k", outPath], Math.max(120, Math.ceil(rawDurationSec * 2)));
   const durationSec = (await probe(outPath)).durationSec;
   const timings = marks.length >= words.length * 0.8 ? timingsFromMarks(words, marks, durationSec) : proportionalTimings(words, durationSec);
   return {
