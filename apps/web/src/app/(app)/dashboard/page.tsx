@@ -6,6 +6,7 @@ import { PlatformBars, SeriesArea, SimpleBars, PLATFORM_COLORS } from "@/compone
 import { PlatformBadge } from "@/components/status-badge";
 import { currentBrand, requireUser } from "@/lib/auth";
 import { dashboardData } from "@/lib/dashboard";
+import { VideoProgressPanel } from "@/components/video-progress";
 import { fmtNum, fmtPct, fmtUsd } from "@/lib/utils";
 
 export const metadata = { title: "Dashboard" };
@@ -24,6 +25,8 @@ export default async function DashboardPage() {
         description="Bütün göstergeler gerçek verilerden hesaplanır. Platform metrikleri yalnızca platformların sağladığı ölçüde gösterilir."
         actions={<Link href="/generate" className={buttonVariants()}><Clapperboard className="h-4 w-4" />Video üret</Link>}
       />
+
+      <VideoProgressPanel brandId={brand.id} />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
         <Stat label="Bugün üretilen" value={`${k.today} / ${brand.dailyVideoTarget}`} hint="Günlük hedef" />

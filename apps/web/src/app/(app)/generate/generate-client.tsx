@@ -50,7 +50,8 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
       queued.push(video.video.id);
     }
     setSelected([]);
-    return chosen.length + " video üretimi kuyruğa alındı (" + queued.join(", ") + "). İlerlemeyi Video Kütüphanesi'nde izleyebilirsiniz.";
+    window.dispatchEvent(new Event("asf:video-queued"));
+    return chosen.length + " video üretimi kuyruğa alındı. İlerlemeyi sayfanın üstündeki \"Üretimdeki videolar\" kutusundan yüzde olarak izleyebilirsiniz.";
   }
   return (
     <div className="grid gap-4 lg:grid-cols-2">

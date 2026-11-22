@@ -19,6 +19,7 @@ import { generationLimits } from "./limits";
 import { createPublishJobs } from "./publishing";
 import { queue, QUEUE, GENERATE_JOB_OPTIONS } from "../queue/queues";
 import { audit } from "../lib/audit";
+import { reportProgress, type ProgressStage } from "./progress";
 
 /** Yeni video kaydı oluşturur ve üretim kuyruğuna ekler. Limit ve bütçe önceden kontrol edilir. */
 async function synthesizeSoundDesign(workDir: string, durationSec: number): Promise<string> {
@@ -46,13 +47,23 @@ export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: 
     }
     throw err;
   }
+  await reportProgress(video.id, "QUEUED", 0, "Kuyruğa alındı");
   await queue(QUEUE.generate).add("generate", { videoId: video.id }, { ...GENERATE_JOB_OPTIONS, jobId: `gen-${video.id}` });
   await audit({ action: "video.enqueue", userId: opts.userId, brandId, entity: "Video", entityId: video.id, metadata: { trigger: opts.trigger } });
   return video;
 }
 
+const STAGE_START: Record<string, string> = {
+  SCRIPTING: "Konu seçiliyor",
+  FETCHING_MEDIA: "Sahne görselleri hazırlanıyor",
+  VOICING: "Google TTS ile seslendirme",
+  RENDERING: "Montaja başlanıyor",
+  QUALITY_CHECK: "Kalite kontrol yapılıyor",
+};
+
 async function setStatus(videoId: string, status: VideoStatus, extra: Prisma.VideoUpdateInput = {}) {
   await prisma.video.update({ where: { id: videoId }, data: { status, ...extra } });
+  if (status in STAGE_START) await reportProgress(videoId, status as ProgressStage, 0, STAGE_START[status]);
   logger.info({ videoId, status }, "video durumu");
 }
 
@@ -80,6 +91,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     let script = video.scriptId ? await prisma.videoScript.findUnique({ where: { id: video.scriptId } }) : null;
     if (!script) {
       const idea = await pickIdea(brand.id);
+      await reportProgress(videoId, "SCRIPTING", 0.4, "Senaryo yazılıyor");
       script = await generateScript(brand.id, idea.id, videoId, productionOptions);
       await prisma.video.update({ where: { id: videoId }, data: { scriptId: script.id, title: script.title } });
     }
@@ -87,7 +99,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
 
     // 3) Medya
     await setStatus(videoId, "FETCHING_MEDIA", { title: script.title });
-    const resolved = await resolveSceneMedia({ brandId: brand.id, videoId, scenes, workDir });
+    const resolved = await resolveSceneMedia({ brandId: brand.id, videoId, scenes, workDir, onProgress: (done, total) => reportProgress(videoId, "FETCHING_MEDIA", done / total, `Sahne ${done}/${total}`) });
 
     // 4) Seslendirme
     await setStatus(videoId, "VOICING");
@@ -112,6 +124,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       }
     }
     const music = brand.musicEnabled ? await pickMusic(brand.id, workDir).catch(() => null) : null;
+    await reportProgress(videoId, "RENDERING", 0.02, "Müzik ve ses tasarımı");
     const designedTrack = productionOptions.soundDesign === false ? null : await synthesizeSoundDesign(workDir, tts.durationSec);
     let backgroundTrack = music?.file ?? null;
     if (designedTrack && backgroundTrack) { const mixed = path.join(workDir, "background-mix.mp3"); await ffmpeg(["-y", "-i", backgroundTrack, "-i", designedTrack, "-t", String(Math.max(10, tts.durationSec)), "-filter_complex", "[0:a]volume=0.42[music];[1:a]volume=0.72[design];[music][design]amix=inputs=2:duration=shortest:normalize=0[out]", "-map", "[out]", "-codec:a", "libmp3lame", "-q:a", "4", mixed], 120); backgroundTrack = mixed; }
@@ -130,6 +143,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       cta: script.cta,
       minDurationSec: productionOptions.minSeconds ?? brand.minDurationSec,
       maxDurationSec: productionOptions.maxSeconds ?? brand.maxDurationSec,
+      onProgress: (fraction, detail) => reportProgress(videoId, "RENDERING", 0.05 + fraction * 0.95, detail),
     });
 
     // 6) Kalite kontrol
@@ -153,6 +167,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     });
 
     // Depolama
+    await reportProgress(videoId, "QUALITY_CHECK", 0.6, "Video depolamaya yükleniyor");
     const key = `videos/${brand.id}/${videoId}.mp4`;
     const thumbKey = `videos/${brand.id}/${videoId}.jpg`;
     const up = await storage().putFile(key, render.outputPath, "video/mp4");
@@ -198,6 +213,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     const msg = errorMessage(err);
     const willRetry = isRetryable(err) && !(err instanceof BudgetExceededError) && attemptsMade + 1 < (GENERATE_JOB_OPTIONS.attempts ?? 1);
     await prisma.video.update({ where: { id: videoId }, data: { status: willRetry ? "QUEUED" : "FAILED", errorMessage: msg.slice(0, 1000) } });
+    if (willRetry) await reportProgress(videoId, "QUEUED", 0, "Hata oluştu, otomatik olarak tekrar denenecek");
     if (!willRetry) {
       await notify({ type: "VIDEO_FAILED", severity: "ERROR", brandId: brand.id, title: "Video üretilemedi", message: `${brand.name}: ${msg}`, data: { videoId } });
     }
