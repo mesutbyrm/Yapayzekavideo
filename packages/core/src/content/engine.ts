@@ -37,12 +37,22 @@ export async function generateIdeas(brandId: string, count = 5, topic = "") {
       maxOutputTokens: 3000,
     });
     provider = res.provider.toLowerCase();
-    const parsed = ideasSchema.safeParse(res.data);
-    if (parsed.success) {
+    // Modeller bazen boş/null opsiyonel alanlar veya tekil "idea" kapsayıcısı üretir.
+    // Geçerli konu metinlerini koru; eksik açıklama alanlarını şema açısından opsiyonel say.
+    const raw = res.data as any;
+    const candidates = Array.isArray(raw) ? raw : Array.isArray(raw?.ideas) ? raw.ideas : raw?.idea ? [raw.idea] : [];
+    const normalized = candidates.map((item: any) => ({
+      topic: typeof item?.topic === "string" ? item.topic.trim() : typeof item?.title === "string" ? item.title.trim() : "",
+      angle: typeof item?.angle === "string" && item.angle.trim() ? item.angle.trim() : undefined,
+      category: typeof item?.category === "string" && item.category.trim() ? item.category.trim() : undefined,
+      why_now: typeof item?.why_now === "string" && item.why_now.trim() ? item.why_now.trim() : undefined,
+    })).filter((item: any) => item.topic.length >= 5 && item.topic.length <= 160);
+    const parsed = ideasSchema.safeParse({ ideas: normalized.slice(0, 20) });
+    if (parsed.success && parsed.data.ideas.length) {
       ideas = parsed.data.ideas;
       break;
     }
-    validationIssues = parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "ideas"}: ${issue.message}`);
+    validationIssues = parsed.success ? ["ideas dizisi boş"] : parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "ideas"}: ${issue.message}`);
     logger.warn({ brandId, provider, issues: validationIssues }, "fikir JSON şeması geçersiz; düzeltme isteniyor");
   }
   if (!ideas) {
