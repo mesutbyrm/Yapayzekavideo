@@ -22,20 +22,35 @@ export async function generateIdeas(brandId: string, count = 5, topic = "") {
   });
   const usedTopics = used.map((u) => u.topic);
   const hints = await topPerformingTopics(brandId, 5).catch(() => []);
-  const res = await chatJson({
-    system: IDEAS_SYSTEM,
-    user: ideasUser(brandContext(brand, categories), count + 3, usedTopics.slice(0, 80), hints, topic),
-    brandId,
-    operation: "content.ideas",
-    schemaName: "ideas",
-    jsonSchema: ideasJsonSchema as any,
-    maxOutputTokens: 3000,
-  });
-  const parsed = ideasSchema.safeParse(res.data);
-  if (!parsed.success) throw new ProviderError("Fikir JSON doğrulaması başarısız", "openai", "IDEAS_INVALID", true);
+  const baseUserPrompt = ideasUser(brandContext(brand, categories), count + 3, usedTopics.slice(0, 80), hints, topic);
+  let ideas: Array<{ topic: string; angle?: string; category?: string; why_now?: string }> | null = null;
+  let validationIssues: string[] = [];
+  let provider = "anthropic";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const res = await chatJson({
+      system: IDEAS_SYSTEM,
+      user: attempt === 1 ? baseUserPrompt : baseUserPrompt + "\\n\\nÖNCEKİ JSON ŞEMADAN GEÇMEDİ. Sorunlar: " + validationIssues.join("; ") + ". Her elemanda topic, angle, category, why_now alanlarının hepsini metin olarak ver. Sadece istenen JSON nesnesini döndür.",
+      brandId,
+      operation: "content.ideas",
+      schemaName: "ideas",
+      jsonSchema: ideasJsonSchema as any,
+      maxOutputTokens: 3000,
+    });
+    provider = res.provider.toLowerCase();
+    const parsed = ideasSchema.safeParse(res.data);
+    if (parsed.success) {
+      ideas = parsed.data.ideas;
+      break;
+    }
+    validationIssues = parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "ideas"}: ${issue.message}`);
+    logger.warn({ brandId, provider, issues: validationIssues }, "fikir JSON şeması geçersiz; düzeltme isteniyor");
+  }
+  if (!ideas) {
+    throw new ProviderError("Fikir JSON doğrulaması başarısız: " + validationIssues.join("; "), provider, "IDEAS_INVALID", true);
+  }
 
   const created = [];
-  for (const idea of parsed.data.ideas) {
+  for (const idea of ideas) {
     if (created.length >= count) break;
     if (isNearDuplicate(idea.topic, usedTopics)) continue;
     const cat = categories.find((c) => c.name.toLocaleLowerCase("tr") === idea.category?.toLocaleLowerCase("tr"));
