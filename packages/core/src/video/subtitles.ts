@@ -95,7 +95,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       remaining -= duration;
       return "{\\kf" + duration + "}" + esc(word);
     }).join(" ");
-    lines.push("Dialogue: 2," + ts(c.start) + "," + ts(c.end) + ",Caption,0,0,0,,{\\fad(80,60)\\fscx108\\fscy108\\t(0,100,\\fscx100\\fscy100)}" + karaoke);
+    lines.push("Dialogue: 2," + ts(c.start) + "," + ts(c.end) + ",Caption,,0,0,0,,{\\fad(80,60)\\fscx108\\fscy108\\t(0,100,\\fscx100\\fscy100)}" + karaoke);
   }
   if (o.outro) lines.push(`Dialogue: 3,${ts(o.outro.start)},${ts(o.outro.end)},Outro,,0,0,0,,{\\fad(300,0)\\move(540,1060,540,1000,0,400)}${esc(o.outro.text)}`);
   return header + lines.join("\n") + "\n";

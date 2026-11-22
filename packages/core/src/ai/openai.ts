@@ -7,7 +7,9 @@ import { getProviderApiKeys } from "./provider-keys";
 
 let client: OpenAI | null = null;
 let clientKey: string | undefined;
+let injected = false;
 export function openai(apiKey: string | undefined = env().OPENAI_API_KEY): OpenAI {
+  if (injected && client) return client;
   const key = apiKey;
   if (!key) throw new NotConfiguredError("OpenAI", ["OPENAI_API_KEY"]);
   if (!client || clientKey !== key) { client = new OpenAI({ apiKey: key, timeout: 90_000, maxRetries: 2 }); clientKey = key; }
@@ -18,6 +20,7 @@ export function openai(apiKey: string | undefined = env().OPENAI_API_KEY): OpenA
 export function setOpenAiClient(c: OpenAI | null) {
   client = c;
   clientKey = undefined;
+  injected = c !== null;
 }
 
 export interface JsonChatResult<T> {

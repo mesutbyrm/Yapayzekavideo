@@ -25,7 +25,7 @@ async function synthesizeSoundDesign(workDir: string, durationSec: number): Prom
   const out = path.join(workDir, "sound-design.wav");
   const duration = Math.max(10, Math.ceil(durationSec));
   const tail = Math.max(1, duration - 1);
-  await ffmpeg(["-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.018:duration=" + duration, "-f", "lavfi", "-i", "aevalsrc=0.12*sin(2*PI*110*t)*lt(mod(t\,7)\,0.16):s=48000:d=" + duration, "-filter_complex", "[0:a]lowpass=f=480,volume=0.28[amb];[1:a]lowpass=f=900,volume=0.55[hit];[amb][hit]amix=inputs=2:duration=longest:normalize=0,afade=t=out:st=" + tail + ":d=1[out]", "-map", "[out]", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", out], 120);
+  await ffmpeg(["-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.018:duration=" + duration, "-f", "lavfi", "-i", "aevalsrc=0.12*sin(2*PI*110*t)*lt(mod(t\\,7)\\,0.16):s=48000:d=" + duration, "-filter_complex", "[0:a]lowpass=f=480,volume=0.28[amb];[1:a]lowpass=f=900,volume=0.55[hit];[amb][hit]amix=inputs=2:duration=longest:normalize=0,afade=t=out:st=" + tail + ":d=1[out]", "-map", "[out]", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", out], 120);
   return out;
 }
 export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string } }) {
