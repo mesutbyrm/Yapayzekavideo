@@ -45,7 +45,7 @@ const REGISTRY: Record<string, () => MediaProvider> = {
  * library → pexels → pixabay → ai_image → generated (ücretsiz hareketli grafik).
  * Bir sağlayıcı çalışmazsa (anahtar yok, kota, hata) sıradakine geçilir; sistem durmaz.
  */
-export async function resolveSceneMedia(opts: { brandId: string; videoId: string; scenes: SceneInput[]; workDir: string; template?: string; primaryColor?: string }): Promise<ResolvedScene[]> {
+export async function resolveSceneMedia(opts: { brandId: string; videoId: string; scenes: SceneInput[]; workDir: string; onProgress?: (done: number, total: number) => unknown; template?: string; primaryColor?: string }): Promise<ResolvedScene[]> {
   let order: string[] = await getSetting("media.providerOrder");
   // shorts3d: referanstaki gibi sahneye uygun 3D karakter/nesne için AI görsel stok videodan önce denenir
   if (opts.template === "shorts3d" && order.includes("ai_image")) order = ["library", "ai_image", ...order.filter((p) => p !== "library" && p !== "ai_image")];
@@ -89,8 +89,9 @@ export async function resolveSceneMedia(opts: { brandId: string; videoId: string
           resolved = { index: i, kind: "IMAGE", filePath: file, durationSec: scene.duration, assetId: asset.id, provider: "openai", license: asset.license, licenseUrl: asset.licenseUrl ?? undefined, commercialUse: true, attribution: "AI generated" };
           continue;
         }
-        if (process.env.DISABLE_STOCK_VIDEO !== "false") { out.push(generatedScene(i, scene.duration)); continue; }
-    const provider = REGISTRY[pid]?.();
+        // Stok video (Pexels/Pixabay) varsayılan olarak kapalı: sahneler kodla üretilir. Açmak için DISABLE_STOCK_VIDEO=false
+        if ((pid === "pexels" || pid === "pixabay") && process.env.DISABLE_STOCK_VIDEO !== "false") continue;
+        const provider = REGISTRY[pid]?.();
         if (!provider || !provider.isConfigured()) continue;
         const exclude = new Set([...recentlyUsed, ...usedNow]);
         const cands = await provider.search(keywords, { brandId: opts.brandId, minDurationSec: Math.ceil(scene.duration), orientation: "portrait", excludeProviderIds: exclude });
@@ -107,6 +108,7 @@ export async function resolveSceneMedia(opts: { brandId: string; videoId: string
       }
     }
     out.push(resolved ?? generatedScene(i, scene.duration));
+    await Promise.resolve(opts.onProgress?.(i + 1, opts.scenes.length)).catch(() => undefined);
   }
   return out;
 }

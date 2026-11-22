@@ -30,7 +30,7 @@ beforeAll(async () => {
   resetEnvCache();
   await resetDb();
   await redis().flushdb();
-  await setSetting("media.providerOrder", ["generated"]);
+  await setSetting("media.providerOrder", ["library", "pexels", "pixabay", "ai_image", "generated"]);
 
   // MOCK OpenAI
   setOpenAiClient({

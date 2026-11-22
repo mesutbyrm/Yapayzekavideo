@@ -21,9 +21,11 @@ def sphere(image, box, color, shadow=True):
     hi=mix(color,(255,255,255),0.62); lo=mix(color,(8,12,30),0.55)
     for y in range(h):
         for x in range(w):
-            nx=(x/w-0.36)/0.72; ny=(y/h-0.28)/0.78; d=nx*nx+ny*ny
-            if d<=1:
-                light=max(0,min(1,1-math.sqrt(d)))
+            # Elips maskesi kutunun merkezinde; ışık sol üstteki parlak noktadan yayılır
+            ex=(x+0.5)/w-0.5; ey=(y+0.5)/h-0.5
+            if ex*ex+ey*ey<=0.25:
+                lx=(x/w-0.36)/0.72; ly=(y/h-0.28)/0.78
+                light=max(0,min(1,1-math.sqrt(lx*lx+ly*ly)))
                 c=mix(lo,hi,light*0.85)
                 px[x,y]=rgba(c,255)
     image.alpha_composite(layer,(x0,y0))

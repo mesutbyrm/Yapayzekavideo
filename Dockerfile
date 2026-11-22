@@ -33,7 +33,7 @@ FROM ${RUNTIME_IMAGE} AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 DEBIAN_FRONTEND=noninteractive
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fonts-noto-core ca-certificates tini \
+ && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fonts-noto-core ca-certificates tini python3 python3-pil \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --system --gid 1001 app && useradd --system --uid 1001 --gid app --home /app app \
  && mkdir -p /data/storage /data/work && chown -R app:app /data

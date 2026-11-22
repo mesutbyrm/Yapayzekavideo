@@ -64,6 +64,8 @@ const schema = z.object({
   WORK_DIR: z.string().default("/tmp/asf-work"),
   FFMPEG_PATH: z.string().default("ffmpeg"),
   FFPROBE_PATH: z.string().default("ffprobe"),
+  /** Kodla sahne görseli üreten motion_art.py için Python (Pillow gerekli) */
+  MOTION_ART_PYTHON: z.string().default("python3"),
   FFMPEG_THREADS: z.coerce.number().default(2),
   FFMPEG_TIMEOUT_SEC: z.coerce.number().default(600),
   RENDER_CONCURRENCY: z.coerce.number().default(1),
