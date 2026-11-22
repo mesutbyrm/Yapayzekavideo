@@ -11,7 +11,7 @@ export const GET = api(async ({ req, brand }) => {
 
 /** Fikirden (veya serbest konudan) senaryo üretir: JSON şema doğrulaması + kontrollü yeniden üretim */
 export const POST = api(async ({ json, brand, user, ip }) => {
-  const body = await json(z.object({ brandId: z.string(), ideaId: z.string().optional(), topic: z.string().min(5).max(160).optional(), brief: z.string().trim().min(5).max(3000).optional(), minSeconds: z.number().int().min(15).max(300).default(60), maxSeconds: z.number().int().min(15).max(300).default(60), language: z.enum(["tr","en","de","fr","es","ar"]).default("tr"), subtitles: z.boolean().default(true) }));
+  const body = await json(z.object({ brandId: z.string(), ideaId: z.string().optional(), topic: z.string().min(5).max(160).optional(), brief: z.string().trim().min(5).max(20_000).optional(), minSeconds: z.number().int().min(15).max(300).default(60), maxSeconds: z.number().int().min(15).max(300).default(60), language: z.enum(["tr","en","de","fr","es","ar"]).default("tr"), subtitles: z.boolean().default(true) }));
   await brand(body.brandId, "write");
   let ideaId = body.ideaId;
   if (!ideaId) {
