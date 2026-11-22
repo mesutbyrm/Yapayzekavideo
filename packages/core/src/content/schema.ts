@@ -6,6 +6,8 @@ export const sceneSchema = z.object({
   /** Stok medya araması için İngilizce anahtar kelimeler */
   search_keywords: z.array(z.string().min(2)).min(1).max(6).optional(),
   subtitle: z.string().min(1).max(160),
+  /** shorts3d: ekranda eğik hap olarak görünen kısa etiket (ör. "2017 · MIT"); boş olabilir */
+  label: z.string().max(40).optional(),
 });
 
 const platformMeta = z
@@ -32,6 +34,12 @@ export const scriptSchema = z.object({
   }),
   /** Model tarafından beyan edilen doğrulanabilirlik notu */
   fact_check_notes: z.string().max(600).optional(),
+  /** shorts3d: açılış kapak başlığı, "BU BİR|TÜFEK Mİ?!" (| satır ayırır) */
+  cover_title: z.string().max(60).optional(),
+  /** shorts3d: altyazıda sarı vurgulanacak anahtar kelimeler (anlatımdaki yazımıyla) */
+  highlight_words: z.array(z.string().max(40)).max(30).optional(),
+  /** shorts3d: altyazıda kırmızı vurgulanacak şok/uyarı kelimeleri */
+  alert_words: z.array(z.string().max(40)).max(10).optional(),
 });
 
 export type VideoScriptJson = z.infer<typeof scriptSchema>;
@@ -40,7 +48,7 @@ export type VideoScriptJson = z.infer<typeof scriptSchema>;
 export const scriptJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "hook", "narration", "scenes", "cta", "hashtags", "platform_metadata", "fact_check_notes"],
+  required: ["title", "hook", "narration", "scenes", "cta", "hashtags", "platform_metadata", "fact_check_notes", "cover_title", "highlight_words", "alert_words"],
   properties: {
     title: { type: "string" },
     hook: { type: "string" },
@@ -50,12 +58,13 @@ export const scriptJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["duration", "visual_description", "search_keywords", "subtitle"],
+        required: ["duration", "visual_description", "search_keywords", "subtitle", "label"],
         properties: {
           duration: { type: "number" },
           visual_description: { type: "string" },
           search_keywords: { type: "array", items: { type: "string" } },
           subtitle: { type: "string" },
+          label: { type: "string" },
         },
       },
     },
@@ -83,6 +92,9 @@ export const scriptJsonSchema = {
       ),
     },
     fact_check_notes: { type: "string" },
+    cover_title: { type: "string" },
+    highlight_words: { type: "array", items: { type: "string" } },
+    alert_words: { type: "array", items: { type: "string" } },
   },
 } as const;
 

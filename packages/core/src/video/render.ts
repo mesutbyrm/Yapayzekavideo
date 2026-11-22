@@ -4,6 +4,7 @@ import { ffmpeg, probe, escapeFilterPath } from "./ffmpeg";
 import type { ResolvedScene } from "../media/resolve";
 import type { WordTiming } from "../tts/google";
 import { buildAss, groupWords, type Cue } from "./subtitles";
+import { buildShortsAss, buildShortsCaptions, mix, shortsFontsDir, SHORTS_TEMPLATE, type Highlights } from "./shorts-style";
 
 export const OUTPUT_SPEC = { width: 1080, height: 1920, fps: 30, vcodec: "h264", acodec: "aac" } as const;
 
@@ -21,6 +22,18 @@ export interface RenderInput {
   cta: string;
   minDurationSec: number;
   maxDurationSec: number;
+  /** Marka video şablonu: "modern" (varsayılan) veya "shorts3d" (referans videolardaki stil) */
+  template?: string;
+  shorts?: {
+    seriesName: string;
+    episode?: number | null;
+    /** "SATIR 1|SATIR 2" — boşsa title kullanılır */
+    coverTitle?: string | null;
+    highlights?: Highlights;
+    /** Sahne başına kısa etiket (ör. "2017 · MIT") */
+    labels?: (string | null | undefined)[];
+    outroSubtitle?: string | null;
+  };
 }
 
 export interface RenderOutput {
@@ -34,15 +47,18 @@ export interface RenderOutput {
 
 const XFADE = 0.35;
 const OUTRO = 1.8;
+const SHORTS_XFADE = 0.3;
+const SHORTS_OUTRO = 2.4;
+const SHORTS_TRANSITIONS = ["fade", "zoomin", "smoothup", "fade", "smoothleft"];
 const VOICE_DELAY = 0.15;
 const TRANSITIONS = ["fade", "smoothleft", "smoothup", "circleopen", "slideleft", "fadeblack"];
 
 const hex = (c: string) => "0x" + c.replace("#", "");
 
 /** Toplam süre: ses + kapanış; hedef aralığa sıkıştırılır */
-export function planDurations(sceneDurations: number[], voiceSec: number, minSec: number, maxSec: number) {
-  const total = Math.min(maxSec, Math.max(minSec, voiceSec + VOICE_DELAY + OUTRO + 0.2));
-  const contentSec = total - OUTRO;
+export function planDurations(sceneDurations: number[], voiceSec: number, minSec: number, maxSec: number, outroSec = OUTRO) {
+  const total = Math.min(maxSec, Math.max(minSec, voiceSec + VOICE_DELAY + outroSec + 0.2));
+  const contentSec = total - outroSec;
   const sum = sceneDurations.reduce((a, b) => a + b, 0) || 1;
   const scaled = sceneDurations.map((d) => (d / sum) * contentSec);
   return { total, contentSec, scenes: scaled };
@@ -61,6 +77,14 @@ async function renderSegment(input: RenderInput, s: ResolvedScene, dur: number, 
       "-an", "-vf", `scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},eq=saturation=1.08:contrast=1.03,${norm}`,
       "-frames:v", String(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", out,
     ]);
+  } else if (s.kind === "IMAGE" && s.filePath && isShorts(input)) {
+    // Shorts: karakter/nesne hafifçe yakınlaşır ve yukarı-aşağı süzülür
+    const z = `min(1.02+0.06*on/${frames},1.08)`;
+    await ffmpeg([
+      "-loop", "1", "-i", s.filePath,
+      "-vf", `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase,crop=${W * 2}:${H * 2},zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)+24*sin(on/${fps}*2.2)':d=${frames}:s=${W}x${H}:fps=${fps},eq=saturation=1.12:contrast=1.04,${norm}`,
+      "-frames:v", String(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", out,
+    ]);
   } else if (s.kind === "IMAGE" && s.filePath) {
     // Ken Burns yakınlaştırma
     const dir = idx % 2 === 0 ? "in" : "out";
@@ -68,6 +92,14 @@ async function renderSegment(input: RenderInput, s: ResolvedScene, dur: number, 
     await ffmpeg([
       "-loop", "1", "-i", s.filePath,
       "-vf", `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase,crop=${W * 2}:${H * 2},zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${W}x${H}:fps=${fps},${norm}`,
+      "-frames:v", String(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", out,
+    ]);
+  } else if (isShorts(input)) {
+    // Shorts: referanstaki gibi parlak, tek renk ailesinde yumuşak ışıklı stüdyo arka planı
+    const p = input.brand.primaryColor;
+    await ffmpeg([
+      "-f", "lavfi", "-i", `gradients=s=${W}x${H}:c0=${hex(mix(p, "#FFFFFF", 0.18))}:c1=${hex(mix(p, "#000000", 0.35))}:c2=${hex(mix(p, "#000000", 0.6))}:nb_colors=3:x0=${W / 2}:y0=${Math.round(H * 0.38)}:x1=${W / 2}:y1=${H}:speed=0.004:type=radial:r=${fps}:d=${dur.toFixed(3)}:seed=${idx + 3}`,
+      "-vf", `noise=alls=3:allf=t,vignette=PI/6,${norm}`,
       "-frames:v", String(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", out,
     ]);
   } else {
@@ -102,15 +134,19 @@ async function renderOutro(input: RenderInput, dur: number) {
  * Çıktı: 1080x1920, 30 FPS, H.264 High, AAC 48 kHz stereo, MP4 (faststart).
  */
 export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
-  const plan = planDurations(input.scenes.map((s) => s.durationSec), input.voiceDurationSec, input.minDurationSec, input.maxDurationSec);
+  const shorts = isShorts(input);
+  const outroSec = shorts ? SHORTS_OUTRO : OUTRO;
+  const xf = shorts ? SHORTS_XFADE : XFADE;
+  const plan = planDurations(input.scenes.map((s) => s.durationSec), input.voiceDurationSec, input.minDurationSec, input.maxDurationSec, outroSec);
   const n = input.scenes.length;
 
-  // Geçiş süresi kadar her segment uzatılır (son segment hariç), toplam süre korunur
-  const segDur = plan.scenes.map((d, i) => d + (i < n ? XFADE : 0));
+  // Geçiş süresi kadar her segment uzatılır, toplam süre korunur.
+  // Shorts şablonunda ayrı kapanış klibi yoktur: son sahne kapanış kartı boyunca ekranda kalır.
+  const segDur = plan.scenes.map((d, i) => d + (shorts && i === n - 1 ? outroSec : xf));
   const segFiles: string[] = [];
   for (let i = 0; i < n; i++) segFiles.push(await renderSegment(input, input.scenes[i], segDur[i], i));
-  segFiles.push(await renderOutro(input, OUTRO));
-  const allDur = [...segDur, OUTRO];
+  if (!shorts) segFiles.push(await renderOutro(input, outroSec));
+  const allDur = shorts ? segDur : [...segDur, outroSec];
 
   // xfade zinciri
   const parts: string[] = [];
@@ -119,32 +155,58 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   const segments: RenderOutput["segments"] = [];
   let tStart = 0;
   for (let i = 0; i < allDur.length; i++) {
-    segments.push({ index: i, start: tStart, duration: i < n ? plan.scenes[i] : OUTRO, provider: i < n ? input.scenes[i].provider : "outro" });
-    tStart += i < n ? plan.scenes[i] : OUTRO;
+    segments.push({ index: i, start: tStart, duration: i < n ? plan.scenes[i] : outroSec, provider: i < n ? input.scenes[i].provider : "outro" });
+    tStart += i < n ? plan.scenes[i] : outroSec;
   }
   for (let i = 1; i < allDur.length; i++) {
-    const offset = acc - XFADE;
-    const tr = i === allDur.length - 1 ? "fade" : TRANSITIONS[i % TRANSITIONS.length];
+    const offset = acc - xf;
+    const tr = shorts ? SHORTS_TRANSITIONS[i % SHORTS_TRANSITIONS.length] : i === allDur.length - 1 ? "fade" : TRANSITIONS[i % TRANSITIONS.length];
     const label = `[x${i}]`;
-    parts.push(`${prev}[${i}:v]xfade=transition=${tr}:duration=${XFADE}:offset=${offset.toFixed(3)}${label}`);
+    parts.push(`${prev}[${i}:v]xfade=transition=${tr}:duration=${xf}:offset=${offset.toFixed(3)}${label}`);
     prev = label;
     acc = offset + allDur[i];
   }
 
   // Altyazılar
-  const captions = groupWords(input.words, 4, 22, VOICE_DELAY);
-  const headlines: Cue[] = segments
-    .filter((s) => s.index < n && s.index > 0)
-    .map((s) => ({ start: s.start + 0.2, end: s.start + s.duration - 0.1, text: input.scenes[s.index].subtitle }));
-  const ass = buildAss({
-    font: input.brand.font,
-    primaryColor: input.brand.primaryColor,
-    accentColor: input.brand.accentColor,
-    captions,
-    headlines,
-    intro: { text: input.title, end: 1.7 },
-    outro: { text: input.cta, start: plan.total - OUTRO + 0.1, end: plan.total },
-  });
+  let captions: Cue[];
+  let ass: string;
+  if (shorts) {
+    const o = input.shorts ?? { seriesName: input.title };
+    const sceneSegs = segments.filter((s) => s.index < n);
+    const hookEnd = Math.min(3.0, Math.max(1.6, (sceneSegs[0]?.duration ?? 3) - 0.1));
+    captions = buildShortsCaptions(input.words, VOICE_DELAY, o.highlights ?? {});
+    ass = buildShortsAss({
+      primaryColor: input.brand.primaryColor,
+      durationSec: plan.total,
+      seriesName: o.seriesName,
+      episode: o.episode,
+      coverTitle: o.coverTitle?.trim() || input.title,
+      hookEndSec: hookEnd,
+      words: input.words,
+      voiceOffset: VOICE_DELAY,
+      highlights: o.highlights ?? {},
+      chips: sceneSegs.map((s) => ({ start: s.start + 0.25, end: Math.min(s.start + s.duration - 0.1, s.start + 3.2), text: o.labels?.[s.index] ?? "" })),
+      mascotRanges: sceneSegs
+        .filter((s) => input.scenes[s.index].kind === "GENERATED")
+        .map((s) => ({ start: s.start, end: s.index === n - 1 ? plan.total : s.start + s.duration + xf })),
+      outro: { start: plan.total - outroSec + 0.1, end: plan.total, title: "TAKİP ET!", subtitle: o.outroSubtitle ?? null },
+      seed: input.title.length + n,
+    });
+  } else {
+    captions = groupWords(input.words, 4, 22, VOICE_DELAY);
+    const headlines: Cue[] = segments
+      .filter((s) => s.index < n && s.index > 0)
+      .map((s) => ({ start: s.start + 0.2, end: s.start + s.duration - 0.1, text: input.scenes[s.index].subtitle }));
+    ass = buildAss({
+      font: input.brand.font,
+      primaryColor: input.brand.primaryColor,
+      accentColor: input.brand.accentColor,
+      captions,
+      headlines,
+      intro: { text: input.title, end: 1.7 },
+      outro: { text: input.cta, start: plan.total - outroSec + 0.1, end: plan.total },
+    });
+  }
   const assPath = path.join(input.workDir, "subs.ass");
   await writeFile(assPath, ass, "utf8");
 
@@ -163,10 +225,11 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
     inputs.push("-i", input.logoPath);
   }
 
-  let vchain = `${prev}ass=${escapeFilterPath(assPath)}`;
+  const fontsDir = shorts ? shortsFontsDir() : undefined;
+  let vchain = `${prev}ass=filename=${escapeFilterPath(assPath)}${fontsDir ? `:fontsdir=${escapeFilterPath(fontsDir)}` : ""}`;
   if (logoIdx >= 0) {
-    parts.push(`[${logoIdx}:v]scale=150:-1,format=rgba,colorchannelmixer=aa=0.85[logo]`);
-    vchain += `[vs];[vs][logo]overlay=W-w-48:110:enable='lt(t,${(plan.total - OUTRO).toFixed(2)})'`;
+    parts.push(`[${logoIdx}:v]scale=${shorts ? 120 : 150}:-1,format=rgba,colorchannelmixer=aa=0.85[logo]`);
+    vchain += `[vs];[vs][logo]overlay=W-w-48:${shorts ? 60 : 110}:enable='lt(t,${(plan.total - outroSec).toFixed(2)})'`;
   }
   parts.push(`${vchain},format=yuv420p[vout]`);
 
@@ -200,4 +263,8 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   await ffmpeg(["-ss", "0.9", "-i", outputPath, "-frames:v", "1", "-q:v", "3", thumbnailPath], 60);
   const p = await probe(outputPath);
   return { outputPath, thumbnailPath, assPath, durationSec: p.durationSec, captions, segments };
+}
+
+function isShorts(input: Pick<RenderInput, "template">) {
+  return input.template === SHORTS_TEMPLATE;
 }

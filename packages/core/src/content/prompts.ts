@@ -46,8 +46,20 @@ Zorunlu kurallar:
 9. "platform_metadata": instagram/facebook/tiktok/youtube için ayrı "title" (YouTube için en fazla 90 karakter, #Shorts ekle), "caption" (platform diline uygun, 1-3 cümle + hashtagler), "description", "hashtags".
 10. "fact_check_notes": metindeki iddiaların neden güvenilir olduğunu kısaca açıkla.`;
 
-export function scriptSystem(minSec: number, maxSec: number) {
-  return SCRIPT_SYSTEM.replace("{MIN}", String(minSec))
+/** "shorts3d" şablonu: referans videolardaki (Yapay Zekâ Komedisi) anlatım ve görsel dil */
+export const SHORTS3D_RULES = `
+Şablon kuralları (shorts3d, eğlenceli "bunu biliyor muydunuz" dizisi):
+11. Anlatım: esprili, merak uyandıran, samimi konuşma dili; kısa cümleler. Hook şaşırtıcı bir soru ya da iddia olsun (ör. "Bu kaplumbağa yapay zekâya göre bir tüfek.").
+12. Gerçek olayı tarih, yer ve kim olduğuyla anlat (ör. "2017'de MIT'li araştırmacılar..."), sonra neden komik/ilginç olduğunu ve arkasındaki kavramı basitçe açıkla.
+13. Kapanış: izleyiciye bir soru sor ve "Yorumlara yazın!" ile bitir. "cta" bu son cümle olsun.
+14. Her sahne için "visual_description" İNGİLİZCE ve tek bir sevimli 3D karakter ya da nesne tarif etsin (ör. "a cute green toy turtle", "a friendly white robot with a screen face and glowing cyan eyes looking confused"). Gerçek kişi, marka logosu, yazı tarif etme.
+15. "label": sahnede ekranda kısa etiket gerekiyorsa en fazla 3 kelime (ör. "2017 · MIT", "TUZAK", "RÖNTGEN"); gerekmiyorsa boş string. Etiketleri sahnelerin yarısından azında kullan.
+16. "cover_title": açılış kapak başlığı, toplam en fazla 5 kelime, iki satır "|" ile ayrılır, ikinci satır vurucu olsun (ör. "BU BİR|TÜFEK Mİ?!").
+17. "highlight_words": anlatımda geçen 6-15 anahtar kelime (yazıldığı gibi: sayılar, yıllar, kilit isimler); altyazıda sarı yanar. "alert_words": 1-4 şok/olumsuz kelime (ör. "tüfek", "sahte"); kırmızı yanar.`;
+
+export function scriptSystem(minSec: number, maxSec: number, template?: string) {
+  const base = template === "shorts3d" ? SCRIPT_SYSTEM + SHORTS3D_RULES : SCRIPT_SYSTEM + `\n11. "label", "cover_title" boş string; "highlight_words" ve "alert_words" boş dizi olabilir.`;
+  return base.replace("{MIN}", String(minSec))
     .replace("{MAX}", String(maxSec))
     .replace("{MINW}", String(Math.round(minSec * 2.2)))
     .replace("{MAXW}", String(Math.round(maxSec * 2.5)));

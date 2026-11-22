@@ -86,7 +86,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
   for (let attempt = 1; attempt <= MAX_SCRIPT_ATTEMPTS; attempt++) {
     try {
       const res = await chatJson<unknown>({
-        system: scriptSystem(brand.minDurationSec, brand.maxDurationSec),
+        system: scriptSystem(brand.minDurationSec, brand.maxDurationSec, brand.videoTemplate),
         user: scriptUser(ctx, idea.topic, idea.angle, feedback),
         brandId,
         videoId,

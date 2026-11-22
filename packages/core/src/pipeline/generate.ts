@@ -72,11 +72,12 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       script = await generateScript(brand.id, idea.id, videoId);
       await prisma.video.update({ where: { id: videoId }, data: { scriptId: script.id, title: script.title } });
     }
-    const scenes = script.scenes as unknown as { duration: number; visual_description: string; search_keywords?: string[]; subtitle: string }[];
+    const scenes = script.scenes as unknown as { duration: number; visual_description: string; search_keywords?: string[]; subtitle: string; label?: string }[];
+    const template = brand.videoTemplate;
 
     // 3) Medya
     await setStatus(videoId, "FETCHING_MEDIA", { title: script.title });
-    const resolved = await resolveSceneMedia({ brandId: brand.id, videoId, scenes, workDir });
+    const resolved = await resolveSceneMedia({ brandId: brand.id, videoId, scenes, workDir, template, primaryColor: brand.primaryColor });
 
     // 4) Seslendirme
     await setStatus(videoId, "VOICING");
@@ -101,6 +102,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       }
     }
     const music = brand.musicEnabled ? await pickMusic(brand.id, workDir).catch(() => null) : null;
+    const shorts = template === "shorts3d" ? await shortsOptions(brand, videoId, script.raw, scenes) : undefined;
     const render = await renderVideo({
       workDir,
       scenes: resolved.map((r, i) => ({ ...r, durationSec: scenes[i].duration, subtitle: scenes[i].subtitle })),
@@ -115,6 +117,8 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       cta: script.cta,
       minDurationSec: brand.minDurationSec,
       maxDurationSec: brand.maxDurationSec,
+      template,
+      shorts,
     });
 
     // 6) Kalite kontrol
@@ -190,4 +194,19 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+/** shorts3d şablonu için seri adı, bölüm numarası, kapak başlığı ve vurgu kelimeleri */
+async function shortsOptions(brand: { id: string; name: string }, videoId: string, raw: unknown, scenes: { label?: string }[]) {
+  const r = (raw ?? {}) as { cover_title?: string; highlight_words?: string[]; alert_words?: string[] };
+  const done = await prisma.video.count({ where: { brandId: brand.id, id: { not: videoId }, storageKey: { not: null } } });
+  const episode = done + 1;
+  return {
+    seriesName: brand.name,
+    episode,
+    coverTitle: r.cover_title || null,
+    highlights: { yellow: r.highlight_words ?? [], red: r.alert_words ?? [] },
+    labels: scenes.map((s) => s.label ?? ""),
+    outroSubtitle: `Bölüm ${episode + 1} yakında!`,
+  };
 }

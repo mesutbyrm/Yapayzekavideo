@@ -31,6 +31,7 @@ export interface SceneInput {
   visual_description: string;
   search_keywords?: string[];
   subtitle: string;
+  label?: string;
 }
 
 const REGISTRY: Record<string, () => MediaProvider> = {
@@ -44,8 +45,10 @@ const REGISTRY: Record<string, () => MediaProvider> = {
  * library → pexels → pixabay → ai_image → generated (ücretsiz hareketli grafik).
  * Bir sağlayıcı çalışmazsa (anahtar yok, kota, hata) sıradakine geçilir; sistem durmaz.
  */
-export async function resolveSceneMedia(opts: { brandId: string; videoId: string; scenes: SceneInput[]; workDir: string }): Promise<ResolvedScene[]> {
-  const order: string[] = await getSetting("media.providerOrder");
+export async function resolveSceneMedia(opts: { brandId: string; videoId: string; scenes: SceneInput[]; workDir: string; template?: string; primaryColor?: string }): Promise<ResolvedScene[]> {
+  let order: string[] = await getSetting("media.providerOrder");
+  // shorts3d: referanstaki gibi sahneye uygun 3D karakter/nesne için AI görsel stok videodan önce denenir
+  if (opts.template === "shorts3d" && order.includes("ai_image")) order = ["library", "ai_image", ...order.filter((p) => p !== "library" && p !== "ai_image")];
   const recentlyUsed = await recentProviderIds(opts.brandId);
   const usedNow = new Set<string>();
   const out: ResolvedScene[] = [];
@@ -65,7 +68,7 @@ export async function resolveSceneMedia(opts: { brandId: string; videoId: string
         if (pid === "ai_image") {
           if (!aiImagesEnabled()) continue;
           const file = path.join(opts.workDir, `scene_${i}_ai.png`);
-          const { width, height } = await generateAiImage(scene.visual_description, file, { brandId: opts.brandId, videoId: opts.videoId });
+          const { width, height } = await generateAiImage(scene.visual_description, file, { brandId: opts.brandId, videoId: opts.videoId, template: opts.template, primaryColor: opts.primaryColor });
           const asset = await prisma.mediaAsset.create({
             data: {
               brandId: opts.brandId,
