@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SCENE3D_SHAPES = ["sphere", "cube", "slab", "pillar", "cylinder", "coin", "ring", "helix", "bar_chart", "coin_stack", "grid", "phone", "planet"] as const;
+export const SCENE3D_SHAPES = ["sphere", "cube", "slab", "pillar", "cylinder", "coin", "ring", "helix", "bar_chart", "coin_stack", "grid", "phone", "planet", "brain", "eye", "lightbulb", "magnifier", "rocket", "gear", "hourglass", "book", "cat"] as const;
 export const SCENE3D_MOTIONS = ["spin", "bob", "orbit", "pulse", "bounce", "float", "none"] as const;
 export const SCENE3D_CAMERAS = ["orbit", "dolly", "crane", "static"] as const;
 
