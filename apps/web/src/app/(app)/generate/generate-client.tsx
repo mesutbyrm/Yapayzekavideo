@@ -12,6 +12,7 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
   const [ideas, setIdeas] = useState(initialIdeas);
   const [selected, setSelected] = useState<string[]>([]);
   const [topic, setTopic] = useState("");
+  const [customBrief, setCustomBrief] = useState("");
   const [count, setCount] = useState(5);
   const [minSeconds, setMinSeconds] = useState(60);
   const [maxSeconds, setMaxSeconds] = useState(60);
@@ -39,6 +40,15 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
     await apiFetch("/api/content/ideas", { method: "PATCH", json: { id, status: "REJECTED" } });
     setIdeas((old) => old.filter((item) => item.id !== id));
     setSelected((old) => old.filter((x) => x !== id));
+  }
+  async function produceCustomBrief() {
+    const brief = customBrief.trim();
+    if (brief.length < 5) throw new Error("Önce video fikrinizi yazın.");
+    const script = await apiFetch("/api/content/scripts", { method: "POST", json: { brandId, brief, minSeconds, maxSeconds, language, subtitles } });
+    const video = await apiFetch("/api/videos/generate", { method: "POST", json: { brandId, scriptId: script.script.id, productionOptions: { minSeconds, maxSeconds, language, subtitles, soundDesign }, publishOptions: { platforms, scheduledAtByPlatform: Object.fromEntries(platforms.filter((platform) => scheduleTimes[platform]).map((platform) => [platform, DateTime.fromISO(scheduleTimes[platform], { zone: "Europe/Istanbul" }).toUTC().toISO() ?? ""])) } } });
+    setCustomBrief("");
+    window.dispatchEvent(new Event("asf:video-queued"));
+    return "Özel fikriniz için senaryo ve video üretimi kuyruğa alındı. Video kütüphanesinde ilerlemeyi izleyebilirsiniz.";
   }
   async function produceSelected() {
     const chosen = ideas.filter((item) => selected.includes(item.id));
@@ -78,6 +88,14 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
           <p className="text-sm text-muted-foreground">{selected.length} fikir seçildi</p>
           <Button size="lg" disabled={!canGenerate || !selected.length || !!busy} onClick={() => run("produce", produceSelected)}><Clapperboard className="h-4 w-4" />{busy === "produce" ? "Seçilenler kuyruğa alınıyor…" : "Seçilen videoları üret"}</Button>
           {msg ? <p role="status" className={msg.tone === "ok" ? "text-sm text-success" : "text-sm text-danger"}>{msg.text}</p> : null}
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-2">
+        <CardHeader><CardTitle>Kendi fikrini doğrudan videoya çevir</CardTitle><CardDescription>Fikrinizi veya sahne talimatlarınızı yazın. Sistem bunu değiştirmeden ana brif olarak kullanıp senaryo, seslendirme, altyazı ve videoyu hazırlar.</CardDescription></CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <textarea aria-label="Kendi video fikrin" placeholder="Örn. İstanbul’da gece yürüyen bir kuryenin kapısına gelen gizemli paketi açınca şehrin 100 yıl sonraki hâlini görmesini anlat. Merak uyandıran, hafif komik ve finalde şaşırtıcı bir bilgi ver." value={customBrief} onChange={(e) => setCustomBrief(e.target.value)} maxLength={3000} rows={5} className="w-full rounded-md border bg-background px-3 py-2 text-sm" />
+          <p className="text-xs text-muted-foreground">Fikrin ana konusu, istediğiniz ton ve özel ayrıntılar senaryo brifi olarak korunur. En fazla 3000 karakter.</p>
+          <Button size="lg" disabled={!canGenerate || customBrief.trim().length < 5 || !!busy} onClick={() => run("custom-brief", produceCustomBrief)}><Clapperboard className="h-4 w-4" />{busy === "custom-brief" ? "Özel fikriniz hazırlanıyor…" : "Bu fikirle videoyu üret"}</Button>
         </CardContent>
       </Card>
       <Card className="lg:col-span-2">
