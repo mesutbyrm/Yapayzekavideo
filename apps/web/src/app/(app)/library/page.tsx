@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { currentBrand, requireUser } from "@/lib/auth";
 import { fmtDate, fmtUsd } from "@/lib/utils";
 import { STATUS_TR } from "@/lib/i18n";
+import { VideoProgressPanel } from "@/components/video-progress";
 
 export const metadata = { title: "Video Kütüphanesi" };
 
@@ -25,6 +26,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader title="Video Kütüphanesi" description={`${total} video`} actions={<Link href="/library/media" className={buttonVariants({ variant: "outline", size: "sm" })}>Medya kütüphanesi ve müzik</Link>} />
+      <VideoProgressPanel brandId={brand.id} />
       <div className="mb-4 flex flex-wrap gap-1.5">
         {FILTERS.map((f) => (
           <Link key={f} href={f ? `/library?status=${f}` : "/library"} className={`rounded-full border px-3 py-1 text-xs ${(sp.status ?? "") === f ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>

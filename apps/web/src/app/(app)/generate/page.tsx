@@ -3,6 +3,7 @@ import { prisma, env, ttsConfigured, generationLimits, budgetStatus } from "@asf
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader } from "@/components/ui";
 import { currentBrand, requireUser } from "@/lib/auth";
 import { GenerateClient } from "./generate-client";
+import { VideoProgressPanel } from "@/components/video-progress";
 import { fmtDate } from "@/lib/utils";
 
 export const metadata = { title: "Video Üret" };
@@ -47,6 +48,8 @@ export default async function GeneratePage() {
           ))}
         </Card>
       </div>
+
+      <VideoProgressPanel brandId={brand.id} hideWhenEmpty={false} />
 
       <GenerateClient
         brandId={brand.id}

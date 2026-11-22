@@ -27,6 +27,7 @@ export { TIKTOK_PRIVACY, TikTokPublisher, type CreatorInfo } from "./publishers/
 export * from "./queue/queues";
 export * from "./pipeline/limits";
 export * from "./pipeline/generate";
+export * from "./pipeline/progress";
 export * from "./pipeline/publishing";
 export * from "./pipeline/scheduler";
 export * from "./pipeline/maintenance";

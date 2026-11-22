@@ -44,7 +44,7 @@ const REGISTRY: Record<string, () => MediaProvider> = {
  * library → pexels → pixabay → ai_image → generated (ücretsiz hareketli grafik).
  * Bir sağlayıcı çalışmazsa (anahtar yok, kota, hata) sıradakine geçilir; sistem durmaz.
  */
-export async function resolveSceneMedia(opts: { brandId: string; videoId: string; scenes: SceneInput[]; workDir: string }): Promise<ResolvedScene[]> {
+export async function resolveSceneMedia(opts: { brandId: string; videoId: string; scenes: SceneInput[]; workDir: string; onProgress?: (done: number, total: number) => unknown }): Promise<ResolvedScene[]> {
   const order: string[] = await getSetting("media.providerOrder");
   const recentlyUsed = await recentProviderIds(opts.brandId);
   const usedNow = new Set<string>();
@@ -105,6 +105,7 @@ export async function resolveSceneMedia(opts: { brandId: string; videoId: string
       }
     }
     out.push(resolved ?? generatedScene(i, scene.duration));
+    await Promise.resolve(opts.onProgress?.(i + 1, opts.scenes.length)).catch(() => undefined);
   }
   return out;
 }

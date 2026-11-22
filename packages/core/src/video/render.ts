@@ -25,6 +25,8 @@ export interface RenderInput {
   cta: string;
   minDurationSec: number;
   maxDurationSec: number;
+  /** İlerleme bildirimi: fraction 0..1, detail kullanıcıya gösterilecek kısa açıklama */
+  onProgress?: (fraction: number, detail: string) => unknown;
 }
 
 export interface RenderOutput {
@@ -150,8 +152,15 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   // Geçiş süresi kadar her segment uzatılır (son segment hariç), toplam süre korunur
   const segDur = plan.scenes.map((d, i) => d + (i < n ? XFADE : 0));
   const segFiles: string[] = [];
-  for (let i = 0; i < n; i++) segFiles.push(await renderSegment(input, input.scenes[i], segDur[i], i));
+  const progress = async (fraction: number, detail: string) => { await Promise.resolve(input.onProgress?.(fraction, detail)).catch(() => undefined); };
+  // Sahne çizimi montajın büyük kısmıdır (%0–75), son kodlama %75–100
+  for (let i = 0; i < n; i++) {
+    await progress((i / (n + 1)) * 0.75, `Sahne ${i + 1}/${n} çiziliyor`);
+    segFiles.push(await renderSegment(input, input.scenes[i], segDur[i], i));
+  }
+  await progress((n / (n + 1)) * 0.75, "Kapanış sahnesi");
   segFiles.push(await renderOutro(input, OUTRO));
+  await progress(0.75, "Altyazı ve geçişler");
   const allDur = [...segDur, OUTRO];
 
   // xfade zinciri
@@ -225,6 +234,7 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   }
 
   const outputPath = path.join(input.workDir, "final.mp4");
+  await progress(0.8, "Son kodlama (H.264)");
   await ffmpeg([
     ...inputs,
     "-filter_complex", parts.join(";"),
@@ -238,6 +248,7 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
     outputPath,
   ]);
 
+  await progress(0.97, "Kapak görseli");
   const thumbnailPath = path.join(input.workDir, "thumb.jpg");
   await ffmpeg(["-ss", "0.9", "-i", outputPath, "-frames:v", "1", "-q:v", "3", thumbnailPath], 60);
   const p = await probe(outputPath);
