@@ -5,6 +5,11 @@ export function openAiCost(inputTokens: number, outputTokens: number) {
   return (inputTokens / 1e6) * e.OPENAI_INPUT_PRICE_PER_1M + (outputTokens / 1e6) * e.OPENAI_OUTPUT_PRICE_PER_1M;
 }
 
+export function anthropicCost(inputTokens: number, outputTokens: number) {
+  const e = env();
+  return (inputTokens / 1e6) * e.ANTHROPIC_INPUT_PRICE_PER_1M + (outputTokens / 1e6) * e.ANTHROPIC_OUTPUT_PRICE_PER_1M;
+}
+
 export function ttsCost(characters: number) {
   return (characters / 1e6) * env().GOOGLE_TTS_PRICE_PER_1M_CHARS;
 }

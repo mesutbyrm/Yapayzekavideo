@@ -1,20 +1,23 @@
-import { env, platformStatus, storage, ttsConfigured, emailConfigured, aiImagesEnabled, redis, prisma } from "@asf/core";
+import { env, platformStatus, storage, ttsConfigured, emailConfigured, aiImagesEnabled, redis, prisma, getProviderApiKeys } from "@asf/core";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader, Table, Td, Th } from "@/components/ui";
 import { PlatformBadge } from "@/components/status-badge";
 import { requireUser } from "@/lib/auth";
+import { AIProviderSettings } from "./ai-provider-settings";
 
 export const metadata = { title: "API Bağlantıları" };
 
 export default async function IntegrationsPage() {
   await requireUser();
   const e = env();
+  const providerKeys = await getProviderApiKeys();
   const storageHealth = await storage().healthCheck().catch((err) => ({ ok: false, message: String(err?.message ?? err) }));
   const redisOk = await redis().ping().then((r) => r === "PONG").catch(() => false);
   const dbOk = await prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
   const rows = [
     { name: "PostgreSQL", ok: dbOk, env: "DATABASE_URL", note: "Veritabanı" },
     { name: "Redis / BullMQ", ok: redisOk, env: "REDIS_URL", note: "Kuyruk sistemi" },
-    { name: "OpenAI", ok: !!e.OPENAI_API_KEY, env: "OPENAI_API_KEY", note: `Senaryo + moderasyon · model ${e.OPENAI_MODEL}` },
+    { name: "Claude", ok: !!(e.ANTHROPIC_API_KEY || providerKeys.anthropic), env: "ANTHROPIC_API_KEY", note: "Senaryo ve fikir üretimi; sağlayıcı: " + e.AI_TEXT_PROVIDER + " (" + e.ANTHROPIC_MODEL + ")" },
+    { name: "OpenAI", ok: !!(e.OPENAI_API_KEY || providerKeys.openai), env: "OPENAI_API_KEY", note: `Senaryo + moderasyon · model ${e.OPENAI_MODEL}` },
     { name: "Google Cloud Text-to-Speech", ok: ttsConfigured(), env: "GOOGLE_APPLICATION_CREDENTIALS veya GOOGLE_TTS_CREDENTIALS_JSON", note: "Türkçe seslendirme (Cloud Text-to-Speech API etkin olmalı)" },
     { name: "Pexels", ok: !!e.PEXELS_API_KEY, env: "PEXELS_API_KEY", note: "Ücretsiz stok video (yoksa sıradaki sağlayıcı kullanılır)" },
     { name: "Pixabay", ok: !!e.PIXABAY_API_KEY, env: "PIXABAY_API_KEY", note: "Ücretsiz stok video (alternatif)" },
@@ -31,7 +34,8 @@ export default async function IntegrationsPage() {
   };
   return (
     <>
-      <PageHeader title="API Bağlantıları" description="Anahtarlar sunucuda ortam değişkenlerinden okunur ve arayüze asla gönderilmez. Değişiklik için .env dosyasını güncelleyip servisleri yeniden başlatın." />
+      <PageHeader title="API Bağlantıları" description="Claude ve OpenAI anahtarlarını aşağıdan güvenli biçimde kaydedip etkin modeli seçin. Anahtarlar şifreli saklanır ve ekranda tekrar gösterilmez." />
+      <AIProviderSettings />
       <Card>
         <CardHeader><CardTitle>Altyapı ve üretim servisleri</CardTitle></CardHeader>
         <CardContent>

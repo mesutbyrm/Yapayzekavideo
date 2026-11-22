@@ -24,10 +24,11 @@ Kurallar:
 - Daha önce kullanılan konuları ve onlara çok benzeyenleri tekrar etme.
 - Çıktı yalnızca JSON: {"ideas":[{"topic","angle","category","why_now"}]}`;
 
-export function ideasUser(ctx: string, count: number, usedTopics: string[], performanceHints: string[]) {
+export function ideasUser(ctx: string, count: number, usedTopics: string[], performanceHints: string[], topic = "") {
   return `${ctx}
 
-${count} adet yeni video fikri üret. Her fikir 20-30 saniyede anlatılabilecek kadar odaklı olsun.
+${topic ? `Kullanıcının özellikle istediği konu: ${topic}. Fikirlerin tamamı bu konuya odaklansın.
+` : ""}${count} adet yeni video fikri üret. Her fikir 20-30 saniyede anlatılabilecek kadar odaklı olsun.
 ${performanceHints.length ? `Gerçek performans verilerine göre iyi çalışan konular/açılar:\n- ${performanceHints.join("\n- ")}\n` : ""}
 Daha önce kullanılan konular (TEKRAR ETME):
 ${usedTopics.length ? usedTopics.map((t) => `- ${t}`).join("\n") : "- (henüz yok)"}`;
@@ -57,9 +58,9 @@ export const SHORTS3D_RULES = `
 16. "cover_title": açılış kapak başlığı, toplam en fazla 5 kelime, iki satır "|" ile ayrılır, ikinci satır vurucu olsun (ör. "BU BİR|TÜFEK Mİ?!").
 17. "highlight_words": anlatımda geçen 6-15 anahtar kelime (yazıldığı gibi: sayılar, yıllar, kilit isimler); altyazıda sarı yanar. "alert_words": 1-4 şok/olumsuz kelime (ör. "tüfek", "sahte"); kırmızı yanar.`;
 
-export function scriptSystem(minSec: number, maxSec: number, template?: string) {
+export function scriptSystem(minSec: number, maxSec: number, language = "Turkish", template?: string) {
   const base = template === "shorts3d" ? SCRIPT_SYSTEM + SHORTS3D_RULES : SCRIPT_SYSTEM + `\n11. "label", "cover_title" boş string; "highlight_words" ve "alert_words" boş dizi olabilir.`;
-  return base.replace("{MIN}", String(minSec))
+  return base.replaceAll("Türkçe", language).replace("{MIN}", String(minSec))
     .replace("{MAX}", String(maxSec))
     .replace("{MINW}", String(Math.round(minSec * 2.2)))
     .replace("{MAXW}", String(Math.round(maxSec * 2.5)));

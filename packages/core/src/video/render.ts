@@ -108,7 +108,7 @@ async function renderSegment(input: RenderInput, s: ResolvedScene, dur: number, 
     const c0 = c[idx % 3], c1 = c[(idx + 1) % 3];
     await ffmpeg([
       "-f", "lavfi", "-i", `gradients=s=${W}x${H}:c0=${hex(c0)}:c1=${hex(c1)}:c2=0x111827:nb_colors=3:speed=0.012:type=radial:r=${fps}:d=${dur.toFixed(3)}:seed=${idx + 7}`,
-      "-vf", `noise=alls=6:allf=t,vignette=PI/5,${norm}`,
+      "-vf", `noise=alls=6:allf=t,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='●':fontcolor=white@0.16:fontsize=240:x='W*0.10+34*sin(t*0.42)':y='H*0.18+52*cos(t*0.38)',drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='●':fontcolor=white@0.12:fontsize=150:x='W*0.72+26*cos(t*0.33)':y='H*0.30+42*sin(t*0.46)',vignette=PI/5,${norm}`,
       "-frames:v", String(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", out,
     ]);
   }

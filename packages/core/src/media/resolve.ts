@@ -89,7 +89,8 @@ export async function resolveSceneMedia(opts: { brandId: string; videoId: string
           resolved = { index: i, kind: "IMAGE", filePath: file, durationSec: scene.duration, assetId: asset.id, provider: "openai", license: asset.license, licenseUrl: asset.licenseUrl ?? undefined, commercialUse: true, attribution: "AI generated" };
           continue;
         }
-        const provider = REGISTRY[pid]?.();
+        if (process.env.DISABLE_STOCK_VIDEO !== "false") { out.push(generatedScene(i, scene.duration)); continue; }
+    const provider = REGISTRY[pid]?.();
         if (!provider || !provider.isConfigured()) continue;
         const exclude = new Set([...recentlyUsed, ...usedNow]);
         const cands = await provider.search(keywords, { brandId: opts.brandId, minDurationSec: Math.ceil(scene.duration), orientation: "portrait", excludeProviderIds: exclude });

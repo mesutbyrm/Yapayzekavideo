@@ -36,6 +36,7 @@ export interface StorageDriver {
   delete(key: string): Promise<void>;
   /** Dış platformların (Instagram/Facebook) çekebileceği, süreli erişim adresi */
   publicUrl(key: string, ttlSec: number): Promise<string>;
+  getObjectStream?(key: string, range?: string): Promise<{ body: Readable; contentLength?: number; contentRange?: string }>;
   healthCheck(): Promise<HealthResult>;
 }
 
@@ -187,6 +188,12 @@ export class R2Driver implements StorageDriver {
       params: { Bucket: this.bucket, Key: k, Body: createReadStream(filePath), ContentType: contentType ?? contentTypeFor(filePath), ContentLength: st.size },
     }).done();
     return { key: k, sizeBytes: st.size };
+  }
+
+  async getObjectStream(key: string, range?: string): Promise<{ body: Readable; contentLength?: number; contentRange?: string }> {
+    const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: normalizeKey(key), ...(range ? { Range: range } : {}) }));
+    if (!res.Body) throw new Error("R2 dosya içeriği boş");
+    return { body: res.Body as Readable, contentLength: res.ContentLength, contentRange: res.ContentRange };
   }
 
   async getToFile(key: string, filePath: string): Promise<void> {

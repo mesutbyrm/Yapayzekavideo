@@ -11,7 +11,7 @@ import { topPerformingTopics } from "../analytics/insights";
 const MAX_SCRIPT_ATTEMPTS = 3;
 
 /** Günlük konu/fikir üretimi. Tekrarlar parmak izi + benzerlik ile elenir. */
-export async function generateIdeas(brandId: string, count = 5) {
+export async function generateIdeas(brandId: string, count = 5, topic = "") {
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } });
   const categories = await prisma.contentCategory.findMany({ where: { brandId, isActive: true } });
   const used = await prisma.contentIdea.findMany({
@@ -24,7 +24,7 @@ export async function generateIdeas(brandId: string, count = 5) {
   const hints = await topPerformingTopics(brandId, 5).catch(() => []);
   const res = await chatJson({
     system: IDEAS_SYSTEM,
-    user: ideasUser(brandContext(brand, categories), count + 3, usedTopics.slice(0, 80), hints),
+    user: ideasUser(brandContext(brand, categories), count + 3, usedTopics.slice(0, 80), hints, topic),
     brandId,
     operation: "content.ideas",
     schemaName: "ideas",
@@ -69,12 +69,16 @@ export async function pickIdea(brandId: string) {
  * Senaryo üretimi: JSON şema doğrulama + süre kontrolü + tekrar kontrolü + güvenlik.
  * Hatalı çıktıda hatalar modele geri bildirilerek en fazla 3 kez kontrollü yeniden üretim yapılır.
  */
-export async function generateScript(brandId: string, ideaId: string, videoId?: string | null) {
+export async function generateScript(brandId: string, ideaId: string, videoId?: string | null, opts?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean }) {
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } });
   const idea = await prisma.contentIdea.findUniqueOrThrow({ where: { id: ideaId } });
   if (idea.brandId !== brandId) throw new AppError("Fikir bu markaya ait değil", "FORBIDDEN", 403);
   const categories = await prisma.contentCategory.findMany({ where: { brandId, isActive: true } });
   const ctx = brandContext(brand, categories);
+  const minSeconds = opts?.minSeconds ?? brand.minDurationSec;
+  const maxSeconds = opts?.maxSeconds ?? brand.maxDurationSec;
+  const language = opts?.language ?? "tr";
+  const languageName = ({ tr: "Turkish", en: "English", de: "German", fr: "French", es: "Spanish", ar: "Arabic" } as Record<string, string>)[language] ?? "Turkish";
   const recent = await prisma.videoScript.findMany({ where: { brandId }, orderBy: { createdAt: "desc" }, take: 100, select: { title: true, narration: true } });
   const banned = (brand.contentRules ?? "")
     .split("\n")
@@ -86,8 +90,8 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
   for (let attempt = 1; attempt <= MAX_SCRIPT_ATTEMPTS; attempt++) {
     try {
       const res = await chatJson<unknown>({
-        system: scriptSystem(brand.minDurationSec, brand.maxDurationSec, brand.videoTemplate),
-        user: scriptUser(ctx, idea.topic, idea.angle, feedback),
+        system: scriptSystem(minSeconds, maxSeconds, languageName, brand.videoTemplate),
+        user: scriptUser(ctx, idea.topic, idea.angle, feedback) + "\nWrite the title, hook, narration, subtitles, CTA, and metadata entirely in " + languageName + ".",
         brandId,
         videoId,
         operation: "content.script",
@@ -102,7 +106,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
         continue;
       }
       const script = parsed.data;
-      const timing = validateTiming(script, brand.minDurationSec, brand.maxDurationSec);
+      const timing = validateTiming(script, minSeconds, maxSeconds);
       if (timing.length) {
         feedback = timing;
         lastErr = new ProviderError(timing.join("; "), "openai", "SCRIPT_TIMING", true);
@@ -131,7 +135,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
           cta: script.cta,
           hashtags: mergeHashtags(script.hashtags, brand.hashtags),
           platformMetadata: script.platform_metadata as any,
-          raw: res.data as any,
+          raw: { ...(res.data as any), productionOptions: { minSeconds, maxSeconds, language, subtitles: opts?.subtitles ?? true } },
           model: res.model,
           attempts: attempt,
           safetyFlags: safety.flags,

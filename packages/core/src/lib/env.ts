@@ -26,6 +26,11 @@ const schema = z.object({
 
   // OpenAI
   OPENAI_API_KEY: z.string().optional(),
+  AI_TEXT_PROVIDER: z.enum(["openai", "anthropic"]).default("anthropic"),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default("claude-sonnet-5-5"),
+  ANTHROPIC_INPUT_PRICE_PER_1M: z.coerce.number().default(2),
+  ANTHROPIC_OUTPUT_PRICE_PER_1M: z.coerce.number().default(10),
   OPENAI_MODEL: z.string().default("gpt-5-mini"),
   OPENAI_MODERATION_MODEL: z.string().default("omni-moderation-latest"),
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1-mini"),

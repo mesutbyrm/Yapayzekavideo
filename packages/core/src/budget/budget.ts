@@ -16,7 +16,7 @@ export interface BudgetStatus {
 }
 
 /** Bütçeye sayılan değişken (ücretli üretim) maliyetleri. Sunucu/depolama sabit giderleri raporlarda ayrıca gösterilir. */
-export const VARIABLE_PROVIDERS: UsageProvider[] = ["OPENAI", "GOOGLE_TTS", "AI_IMAGE", "AI_VIDEO", "STOCK_MEDIA", "OTHER"];
+export const VARIABLE_PROVIDERS: UsageProvider[] = ["OPENAI", "ANTHROPIC", "GOOGLE_TTS", "AI_IMAGE", "AI_VIDEO", "STOCK_MEDIA", "OTHER"];
 
 export async function monthlySpend(brandId?: string | null, at = new Date()): Promise<number> {
   const { start, end } = monthRange(undefined, at);

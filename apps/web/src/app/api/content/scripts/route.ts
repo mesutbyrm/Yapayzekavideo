@@ -11,7 +11,7 @@ export const GET = api(async ({ req, brand }) => {
 
 /** Fikirden (veya serbest konudan) senaryo üretir: JSON şema doğrulaması + kontrollü yeniden üretim */
 export const POST = api(async ({ json, brand, user, ip }) => {
-  const body = await json(z.object({ brandId: z.string(), ideaId: z.string().optional(), topic: z.string().min(5).max(160).optional() }));
+  const body = await json(z.object({ brandId: z.string(), ideaId: z.string().optional(), topic: z.string().min(5).max(160).optional(), minSeconds: z.number().int().min(15).max(300).default(60), maxSeconds: z.number().int().min(15).max(300).default(60), language: z.enum(["tr","en","de","fr","es","ar"]).default("tr"), subtitles: z.boolean().default(true) }));
   await brand(body.brandId, "write");
   let ideaId = body.ideaId;
   if (!ideaId) {
@@ -23,7 +23,8 @@ export const POST = api(async ({ json, brand, user, ip }) => {
       throw err;
     }
   }
-  const script = await generateScript(body.brandId, ideaId);
+  if (body.maxSeconds < body.minSeconds) throw new AppError("En uzun süre en kısa süreden küçük olamaz", "VALIDATION", 400);
+  const script = await generateScript(body.brandId, ideaId, null, { minSeconds: body.minSeconds, maxSeconds: body.maxSeconds, language: body.language, subtitles: body.subtitles });
   await audit({ action: "content.script", userId: user.id, brandId: body.brandId, entity: "VideoScript", entityId: script.id, ip });
   return ok({ script }, { status: 201 });
 }, { rateLimit: 10 });
