@@ -72,7 +72,8 @@ export async function chatJson<T = unknown>(opts: {
   const provider = (keys.activeProvider ?? opts.provider ?? settings.AI_TEXT_PROVIDER) === "anthropic" && anthropicKey ? "anthropic" : "openai";
   const model = (provider === "anthropic" ? keys.models?.anthropic : keys.models?.openai) ?? (provider === "anthropic" ? settings.ANTHROPIC_MODEL : settings.OPENAI_MODEL);
   const outputLimit = opts.maxOutputTokens ?? 4000;
-  const estimatedCost = provider === "anthropic" ? anthropicCost(3000, outputLimit) : openAiCost(3000, outputLimit);
+  const estimatedInputTokens = Math.max(3000, Math.ceil((opts.system.length + opts.user.length + (opts.jsonSchema ? JSON.stringify(opts.jsonSchema).length : 0)) / 3));
+  const estimatedCost = provider === "anthropic" ? anthropicCost(estimatedInputTokens, outputLimit) : openAiCost(estimatedInputTokens, outputLimit);
   await assertCanSpend(opts.brandId, estimatedCost, opts.operation);
   let rawText = "";
   let inputTokens = 0;
