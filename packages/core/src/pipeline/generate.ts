@@ -30,7 +30,7 @@ async function synthesizeSoundDesign(workDir: string, durationSec: number): Prom
   return out;
 }
 export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string } }) {
-  const limits = await generationLimits(brandId);
+  const limits = await generationLimits(brandId, new Date(), opts.trigger);
   if (!limits.allowed) {
     if (opts.trigger === "auto" && /günlük limiti/.test(limits.reason ?? "")) {
       await notify({ type: "DAILY_TARGET_REACHED", severity: "INFO", brandId, title: "Günlük hedef tamamlandı", message: limits.reason!, dedupeKey: `daily-target:${brandId}:${new Date().toISOString().slice(0, 10)}` });
