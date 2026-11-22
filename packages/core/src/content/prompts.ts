@@ -22,7 +22,7 @@ export function ideasUser(ctx: string, count: number, usedTopics: string[], perf
 
 ${topic ? `Kullanıcının verdiği başlık/konu: ${topic}. Her öneri doğrudan bu başlığın kendisiyle ilgili olsun; yan konu, alakasız gündem veya genel trend ekleme.
 ` : ""}${count} adet yeni fikir üret. Her biri Türkçe, yaklaşık 60 saniyelik dikey anlatıya dönüşebilecek bir hikâye çekirdeği olsun. Kullanıcı başlığı verdiyse yalnızca o konunun özgün açılarını kullan; açılış sorusu ve sona taşıyacak karşılığı belli olsun. Mizahı konuya uygunsa kullan; trend veya viral olma vaadi uydurma.
-${performanceHints.length ? `Gerçek performans verilerine göre iyi çalışan konular/açılar:\n- ${performanceHints.join("\n- ")}\n` : ""}
+${performanceHints.length ? `Gerçek performans verilerine göre iyi çalışan konular/açılar${topic ? " (yalnızca kullanıcı başlığıyla doğrudan ilgiliyse dikkate al; konu dışı ipuçlarını yok say)" : ""}:\n- ${performanceHints.join("\n- ")}\n` : ""}
 Daha önce kullanılan konular (TEKRAR ETME):
 ${usedTopics.length ? usedTopics.map((t) => `- ${t}`).join("\n") : "- (henüz yok)"}`;
 }
