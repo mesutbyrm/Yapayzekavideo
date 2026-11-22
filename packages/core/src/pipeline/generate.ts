@@ -118,7 +118,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     else if (designedTrack) backgroundTrack = designedTrack;
     const render = await renderVideo({
       workDir,
-      scenes: resolved.map((r, i) => ({ ...r, durationSec: scenes[i].duration, subtitle: productionOptions.subtitles === false ? "" : scenes[i].subtitle })),
+      scenes: resolved.map((r, i) => ({ ...r, durationSec: scenes[i].duration, visualDescription: scenes[i].visual_description, subtitle: productionOptions.subtitles === false ? "" : scenes[i].subtitle })),
       voicePath: tts.mp3Path,
       voiceDurationSec: tts.durationSec,
       words: tts.words,

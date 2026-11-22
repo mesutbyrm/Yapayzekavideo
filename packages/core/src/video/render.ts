@@ -1,5 +1,9 @@
 import path from "node:path";
-import { writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { stat, writeFile } from "node:fs/promises";
+import { env } from "../lib/env";
+import { logger } from "../lib/logger";
 import { ffmpeg, probe, escapeFilterPath } from "./ffmpeg";
 import type { ResolvedScene } from "../media/resolve";
 import type { WordTiming } from "../tts/google";
@@ -9,7 +13,7 @@ export const OUTPUT_SPEC = { width: 1080, height: 1920, fps: 30, vcodec: "h264",
 
 export interface RenderInput {
   workDir: string;
-  scenes: (ResolvedScene & { subtitle: string })[];
+  scenes: (ResolvedScene & { subtitle: string; visualDescription?: string })[];
   voicePath: string;
   voiceDurationSec: number;
   words: WordTiming[];
@@ -39,6 +43,38 @@ const TRANSITIONS = ["fade", "smoothleft", "smoothup", "circleopen", "slideleft"
 
 const hex = (c: string) => "0x" + c.replace("#", "");
 
+/** motion_art.py yolu tembel çözülür: Next.js derlemesi import.meta.url'i dosya URL'si olarak vermez */
+function motionArtScript(): string {
+  try {
+    return fileURLToPath(new URL("./motion_art.py", import.meta.url));
+  } catch {
+    return path.resolve(process.cwd(), "../../packages/core/src/video/motion_art.py");
+  }
+}
+
+/**
+ * Sahne görselini kodla çizer (motion_art.py, Pillow): marka renkleri + sahne açıklamasına göre figür.
+ * Python/Pillow yoksa veya hata verirse null döner; çağıran gradyan arka plana düşer.
+ */
+export async function renderMotionArt(opts: { out: string; description: string; brand: RenderInput["brand"]; index: number }): Promise<string | null> {
+  const args = [motionArtScript(), "--out", opts.out, "--description", opts.description.slice(0, 500), "--primary", opts.brand.primaryColor, "--secondary", opts.brand.secondaryColor, "--accent", opts.brand.accentColor, "--index", String(opts.index)];
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(env().MOTION_ART_PYTHON, args, { stdio: ["ignore", "ignore", "pipe"] });
+      let stderr = "";
+      const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
+      child.stderr.on("data", (d) => (stderr = (stderr + d).slice(-2000)));
+      child.on("error", (err) => { clearTimeout(timer); reject(err); });
+      child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`motion_art çıkış kodu ${code}: ${stderr}`)); });
+    });
+    const st = await stat(opts.out);
+    return st.size > 0 ? opts.out : null;
+  } catch (err) {
+    logger.warn({ scene: opts.index, err: (err as Error).message.slice(0, 300) }, "kodla görsel üretilemedi, gradyan arka plan kullanılıyor");
+    return null;
+  }
+}
+
 /** Toplam süre: ses + kapanış; hedef aralığa sıkıştırılır */
 export function planDurations(sceneDurations: number[], voiceSec: number, minSec: number, maxSec: number) {
   const total = Math.min(maxSec, Math.max(minSec, voiceSec + VOICE_DELAY + OUTRO + 0.2));
@@ -48,10 +84,16 @@ export function planDurations(sceneDurations: number[], voiceSec: number, minSec
   return { total, contentSec, scenes: scaled };
 }
 
-async function renderSegment(input: RenderInput, s: ResolvedScene, dur: number, idx: number): Promise<string> {
+async function renderSegment(input: RenderInput, scene: RenderInput["scenes"][number], dur: number, idx: number): Promise<string> {
   const out = path.join(input.workDir, `seg_${idx}.mp4`);
   const W = OUTPUT_SPEC.width, H = OUTPUT_SPEC.height, fps = OUTPUT_SPEC.fps;
   const frames = Math.ceil(dur * fps);
+  let s: ResolvedScene = scene;
+  if (s.kind === "GENERATED") {
+    // Kodla üretilen sahne: çizilen görsel Ken Burns ile canlandırılır
+    const art = await renderMotionArt({ out: path.join(input.workDir, `scene_${idx}_art.png`), description: `${scene.visualDescription ?? ""} ${scene.subtitle ?? ""}`, brand: input.brand, index: idx });
+    if (art) s = { ...s, kind: "IMAGE", filePath: art };
+  }
   const norm = `fps=${fps},setsar=1,format=yuv420p`;
   if (s.kind === "VIDEO" && s.filePath) {
     const p = await probe(s.filePath);
