@@ -12,6 +12,7 @@ import { generateScript, pickIdea } from "../content/engine";
 import { resolveSceneMedia, pickMusic } from "../media/resolve";
 import { synthesizeNarration } from "../tts/google";
 import { renderVideo } from "../video/render";
+import { ffmpeg } from "../video/ffmpeg";
 import { runQualityCheck } from "../qc/quality";
 import { notify } from "../notifications/notify";
 import { generationLimits } from "./limits";
@@ -20,7 +21,14 @@ import { queue, QUEUE, GENERATE_JOB_OPTIONS } from "../queue/queues";
 import { audit } from "../lib/audit";
 
 /** Yeni video kaydı oluşturur ve üretim kuyruğuna ekler. Limit ve bütçe önceden kontrol edilir. */
-export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null }) {
+async function synthesizeSoundDesign(workDir: string, durationSec: number): Promise<string> {
+  const out = path.join(workDir, "sound-design.wav");
+  const duration = Math.max(10, Math.ceil(durationSec));
+  const tail = Math.max(1, duration - 1);
+  await ffmpeg(["-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.018:duration=" + duration, "-f", "lavfi", "-i", "aevalsrc=0.12*sin(2*PI*110*t)*lt(mod(t\\,7)\\,0.16):s=48000:d=" + duration, "-filter_complex", "[0:a]lowpass=f=480,volume=0.28[amb];[1:a]lowpass=f=900,volume=0.55[hit];[amb][hit]amix=inputs=2:duration=longest:normalize=0,afade=t=out:st=" + tail + ":d=1[out]", "-map", "[out]", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", out], 120);
+  return out;
+}
+export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string } }) {
   const limits = await generationLimits(brandId);
   if (!limits.allowed) {
     if (opts.trigger === "auto" && /günlük limiti/.test(limits.reason ?? "")) {
@@ -31,7 +39,7 @@ export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: 
   await assertCanSpend(brandId, estimateVideoCost(), "video.generate");
   let video;
   try {
-    video = await prisma.video.create({ data: { brandId, scheduleSlot: opts.scheduleSlot ?? null, trigger: opts.trigger, scriptId: opts.scriptId ?? null, status: "QUEUED" } });
+    video = await prisma.video.create({ data: { brandId, scheduleSlot: opts.scheduleSlot ?? null, trigger: opts.trigger, scriptId: opts.scriptId ?? null, status: "QUEUED", mediaManifest: { production: opts.productionOptions ?? {}, publish: opts.publishOptions ?? {} } } });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new AppError("Bu zaman dilimi için video zaten oluşturulmuş", "DUPLICATE_SLOT", 409);
@@ -59,6 +67,9 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     return video;
   }
   const brand = video.brand;
+  const manifestOptions = (video.mediaManifest ?? {}) as any;
+  const productionOptions = manifestOptions.production ?? {};
+  const publishOptions = manifestOptions.publish ?? {};
   const workDir = path.join(env().WORK_DIR, videoId);
   await rm(workDir, { recursive: true, force: true });
   await mkdir(workDir, { recursive: true });
@@ -69,7 +80,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     let script = video.scriptId ? await prisma.videoScript.findUnique({ where: { id: video.scriptId } }) : null;
     if (!script) {
       const idea = await pickIdea(brand.id);
-      script = await generateScript(brand.id, idea.id, videoId);
+      script = await generateScript(brand.id, idea.id, videoId, productionOptions);
       await prisma.video.update({ where: { id: videoId }, data: { scriptId: script.id, title: script.title } });
     }
     const scenes = script.scenes as unknown as { duration: number; visual_description: string; search_keywords?: string[]; subtitle: string }[];
@@ -86,8 +97,8 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       workDir,
       brandId: brand.id,
       videoId,
-      minDurationSec: brand.minDurationSec,
-      maxDurationSec: brand.maxDurationSec,
+      minDurationSec: productionOptions.minSeconds ?? brand.minDurationSec,
+      maxDurationSec: productionOptions.maxSeconds ?? brand.maxDurationSec,
     });
 
     // 5) Montaj
@@ -101,20 +112,24 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       }
     }
     const music = brand.musicEnabled ? await pickMusic(brand.id, workDir).catch(() => null) : null;
+    const designedTrack = productionOptions.soundDesign === false ? null : await synthesizeSoundDesign(workDir, tts.durationSec);
+    let backgroundTrack = music?.file ?? null;
+    if (designedTrack && backgroundTrack) { const mixed = path.join(workDir, "background-mix.mp3"); await ffmpeg(["-y", "-i", backgroundTrack, "-i", designedTrack, "-t", String(Math.max(10, tts.durationSec)), "-filter_complex", "[0:a]volume=0.42[music];[1:a]volume=0.72[design];[music][design]amix=inputs=2:duration=shortest:normalize=0[out]", "-map", "[out]", "-codec:a", "libmp3lame", "-q:a", "4", mixed], 120); backgroundTrack = mixed; }
+    else if (designedTrack) backgroundTrack = designedTrack;
     const render = await renderVideo({
       workDir,
-      scenes: resolved.map((r, i) => ({ ...r, durationSec: scenes[i].duration, subtitle: scenes[i].subtitle })),
+      scenes: resolved.map((r, i) => ({ ...r, durationSec: scenes[i].duration, subtitle: productionOptions.subtitles === false ? "" : scenes[i].subtitle })),
       voicePath: tts.mp3Path,
       voiceDurationSec: tts.durationSec,
       words: tts.words,
-      musicPath: music?.file ?? null,
+      musicPath: backgroundTrack,
       musicVolume: brand.musicVolume,
       logoPath,
       brand: { primaryColor: brand.primaryColor, secondaryColor: brand.secondaryColor, accentColor: brand.accentColor, font: brand.fontFamily },
       title: script.hook.length <= 40 ? script.hook : script.title,
       cta: script.cta,
-      minDurationSec: brand.minDurationSec,
-      maxDurationSec: brand.maxDurationSec,
+      minDurationSec: productionOptions.minSeconds ?? brand.minDurationSec,
+      maxDurationSec: productionOptions.maxSeconds ?? brand.maxDurationSec,
     });
 
     // 6) Kalite kontrol
@@ -128,8 +143,8 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     };
     const qc = await runQualityCheck({
       filePath: render.outputPath,
-      minDurationSec: brand.minDurationSec,
-      maxDurationSec: brand.maxDurationSec,
+      minDurationSec: productionOptions.minSeconds ?? brand.minDurationSec,
+      maxDurationSec: productionOptions.maxSeconds ?? brand.maxDurationSec,
       maxSizeMb: Number(await getSetting("video.maxSizeMb")),
       captionsCount: render.captions.length,
       media: manifest.scenes,
@@ -171,7 +186,8 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     await notify({ type: "VIDEO_GENERATED", severity: "SUCCESS", brandId: brand.id, title: "Video üretildi", message: `${script.title} (${qc.metrics.durationSec?.toFixed(1)} sn, $${Number(updated.costUsd).toFixed(4)})`, data: { videoId } });
 
     // 7) Yayın işleri
-    if (brand.autoPublish) await createPublishJobs(videoId);
+    if (publishOptions.platforms?.length) await createPublishJobs(videoId, { platforms: publishOptions.platforms as any, scheduledAt: publishOptions.scheduledAt ? new Date(publishOptions.scheduledAt) : undefined });
+    else if (brand.autoPublish) await createPublishJobs(videoId);
 
     const limits = await generationLimits(brand.id);
     if (limits.brandToday >= limits.brandDailyLimit) {

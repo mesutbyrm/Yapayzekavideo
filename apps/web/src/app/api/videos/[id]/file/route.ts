@@ -13,7 +13,14 @@ export const GET = api(async ({ params, brand, req }) => {
   const key = kind === "thumb" ? v.thumbnailKey : v.storageKey;
   if (!key) throw new AppError("Dosya yok", "NOT_FOUND", 404);
   const s = storage();
-  if (s.name === "r2") return NextResponse.redirect(await s.publicUrl(key, 600));
+  if (s.name === "r2" && s.getObjectStream) {
+    const rangeHeader = req.headers.get("range") ?? undefined;
+    const object = await s.getObjectStream(key, kind === "video" ? rangeHeader : undefined);
+    const headers = new Headers({ "Content-Type": kind === "thumb" ? "image/jpeg" : "video/mp4", "Accept-Ranges": "bytes", "Cache-Control": "private, max-age=300" });
+    if (object.contentLength !== undefined) headers.set("Content-Length", String(object.contentLength));
+    if (object.contentRange) headers.set("Content-Range", object.contentRange);
+    return new Response(Readable.toWeb(object.body) as any, { status: object.contentRange ? 206 : 200, headers });
+  }
   const p = localStoragePath(key);
   const st = await stat(p);
   const type = kind === "thumb" ? "image/jpeg" : "video/mp4";

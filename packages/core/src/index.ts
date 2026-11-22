@@ -36,3 +36,5 @@ export { probe, ffmpeg } from "./video/ffmpeg";
 export { resolveSceneMedia } from "./media/resolve";
 export { aiImagesEnabled } from "./media/ai-image";
 export { metaConfigured } from "./publishers/meta";
+
+export * from "./ai/provider-keys";

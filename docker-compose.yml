@@ -76,7 +76,9 @@ services:
     <<: *app
     image: asf-web:${APP_VERSION:-latest}
     environment: *app-env
-    volumes: [storage:/data/storage]
+    volumes:
+      - storage:/data/storage
+      - ./secrets/google-tts.json:/run/secrets/google-tts.json:ro
     depends_on:
       web: { condition: service_started }
       redis: { condition: service_healthy }
@@ -86,7 +88,10 @@ services:
     image: asf-worker:${APP_VERSION:-latest}
     environment: *app-env
     command: ["./node_modules/.bin/tsx", "src/worker.ts"]
-    volumes: [storage:/data/storage, work:/data/work]
+    volumes:
+    - storage:/data/storage
+    - work:/data/work
+    - ./secrets/google-tts.json:/run/secrets/google-tts.json:ro
     stop_grace_period: 60s
     # FFmpeg montajı bellek/CPU yoğun: sunucuyu kilitlememesi için sınırlandırılır
     mem_limit: ${WORKER_MEM_LIMIT:-3g}

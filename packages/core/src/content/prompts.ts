@@ -24,10 +24,11 @@ Kurallar:
 - Daha önce kullanılan konuları ve onlara çok benzeyenleri tekrar etme.
 - Çıktı yalnızca JSON: {"ideas":[{"topic","angle","category","why_now"}]}`;
 
-export function ideasUser(ctx: string, count: number, usedTopics: string[], performanceHints: string[]) {
+export function ideasUser(ctx: string, count: number, usedTopics: string[], performanceHints: string[], topic = "") {
   return `${ctx}
 
-${count} adet yeni video fikri üret. Her fikir 20-30 saniyede anlatılabilecek kadar odaklı olsun.
+${topic ? `Kullanıcının özellikle istediği konu: ${topic}. Fikirlerin tamamı bu konuya odaklansın.
+` : ""}${count} adet yeni video fikri üret. Her fikir 20-30 saniyede anlatılabilecek kadar odaklı olsun.
 ${performanceHints.length ? `Gerçek performans verilerine göre iyi çalışan konular/açılar:\n- ${performanceHints.join("\n- ")}\n` : ""}
 Daha önce kullanılan konular (TEKRAR ETME):
 ${usedTopics.length ? usedTopics.map((t) => `- ${t}`).join("\n") : "- (henüz yok)"}`;
@@ -46,8 +47,8 @@ Zorunlu kurallar:
 9. "platform_metadata": instagram/facebook/tiktok/youtube için ayrı "title" (YouTube için en fazla 90 karakter, #Shorts ekle), "caption" (platform diline uygun, 1-3 cümle + hashtagler), "description", "hashtags".
 10. "fact_check_notes": metindeki iddiaların neden güvenilir olduğunu kısaca açıkla.`;
 
-export function scriptSystem(minSec: number, maxSec: number) {
-  return SCRIPT_SYSTEM.replace("{MIN}", String(minSec))
+export function scriptSystem(minSec: number, maxSec: number, language = "Turkish") {
+  return SCRIPT_SYSTEM.replaceAll("Türkçe", language).replace("{MIN}", String(minSec))
     .replace("{MAX}", String(maxSec))
     .replace("{MINW}", String(Math.round(minSec * 2.2)))
     .replace("{MAXW}", String(Math.round(maxSec * 2.5)));

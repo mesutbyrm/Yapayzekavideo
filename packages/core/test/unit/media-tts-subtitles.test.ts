@@ -20,7 +20,10 @@ describe("altyazı", () => {
     const ass = buildAss({ font: "DejaVu Sans", primaryColor: "#7C3AED", accentColor: "#F59E0B", captions: groupWords(words), headlines: [] });
     expect(ass).toContain("PlayResX: 1080");
     expect(ass).toContain("PlayResY: 1920");
-    expect(ass).toMatch(/Dialogue: .*BİLİYOR MUYDUN\?/);
+    const caption = ass.split("\n").find((l) => l.includes(",Caption,"))!;
+    // Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text → metin 10. alandan başlar
+    expect(caption).toMatch(/^Dialogue: 2,[^,]+,[^,]+,Caption,,0,0,0,,/);
+    expect(caption.replace(/\{[^}]*\}/g, "")).toMatch(/BİLİYOR MUYDUN\?/);
   });
 });
 

@@ -6,6 +6,7 @@ export const GET = api(async () => {
   const e = env();
   const storageHealth = await storage().healthCheck().catch((err) => ({ ok: false, message: String(err?.message ?? err) }));
   const integrations = [
+    { id: "anthropic", name: "Claude (senaryo ve fikir üretimi)", configured: !!e.ANTHROPIC_API_KEY, env: ["ANTHROPIC_API_KEY"], detail: "Model: " + e.ANTHROPIC_MODEL + "; varsayılan sağlayıcı: " + e.AI_TEXT_PROVIDER },
     { id: "openai", name: "OpenAI (senaryo, moderasyon)", configured: !!e.OPENAI_API_KEY, env: ["OPENAI_API_KEY"], detail: `Model: ${e.OPENAI_MODEL}` },
     { id: "ai_image", name: "OpenAI görsel üretimi (opsiyonel, ücretli)", configured: aiImagesEnabled(), env: ["AI_IMAGES_ENABLED=true", "OPENAI_API_KEY"], detail: e.OPENAI_IMAGE_MODEL },
     { id: "google_tts", name: "Google Cloud Text-to-Speech", configured: ttsConfigured(), env: ["GOOGLE_APPLICATION_CREDENTIALS veya GOOGLE_TTS_CREDENTIALS_JSON"] },
