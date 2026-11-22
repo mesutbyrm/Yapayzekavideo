@@ -1,121 +1,99 @@
 "use client";
-
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Lightbulb, Wand2, Clapperboard } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "@/components/ui";
 import { apiFetch } from "@/lib/client";
 
-interface Idea {
-  id: string;
-  topic: string;
-  angle: string | null;
-  category: string | null;
-}
-
-export function GenerateClient({ brandId, ideas, canGenerate }: { brandId: string; ideas: Idea[]; canGenerate: boolean }) {
+interface Idea { id: string; topic: string; angle: string | null; category: string | null }
+export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { brandId: string; ideas: Idea[]; canGenerate: boolean }) {
   const router = useRouter();
+  const [ideas, setIdeas] = useState(initialIdeas);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [topic, setTopic] = useState("");
+  const [count, setCount] = useState(5);
+  const [minSeconds, setMinSeconds] = useState(60);
+  const [maxSeconds, setMaxSeconds] = useState(60);
+  const [language, setLanguage] = useState("tr");
+  const [subtitles, setSubtitles] = useState(true);
+  const [soundDesign, setSoundDesign] = useState(true);
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [publishAt, setPublishAt] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
-  const [topic, setTopic] = useState("");
-
-  async function run(key: string, fn: () => Promise<string>) {
-    setBusy(key);
-    setMsg(null);
-    try {
-      setMsg({ tone: "ok", text: await fn() });
-      router.refresh();
-    } catch (e) {
-      setMsg({ tone: "err", text: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
+  async function run(key: string, action: () => Promise<string>) {
+    setBusy(key); setMsg(null);
+    try { setMsg({ tone: "ok", text: await action() }); router.refresh(); }
+    catch (e) { setMsg({ tone: "err", text: (e as Error).message }); }
+    finally { setBusy(null); }
   }
-
+  async function makeIdeas() {
+    const result = await apiFetch("/api/content/ideas", { method: "POST", json: { brandId, topic: topic.trim(), count } });
+    setIdeas(result.ideas);
+    setSelected([]);
+    return result.ideas.length + " fikir hazır. Önce inceleyip düzenleyin ve üretmek istediklerinizi seçin.";
+  }
+  function toggle(id: string) { setSelected((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id]); }
+  async function reject(id: string) {
+    await apiFetch("/api/content/ideas", { method: "PATCH", json: { id, status: "REJECTED" } });
+    setIdeas((old) => old.filter((item) => item.id !== id));
+    setSelected((old) => old.filter((x) => x !== id));
+  }
+  async function produceSelected() {
+    const chosen = ideas.filter((item) => selected.includes(item.id));
+    if (!chosen.length) throw new Error("Önce en az bir fikir seçin.");
+    const queued: string[] = [];
+    for (const idea of chosen) {
+      await apiFetch("/api/content/ideas", { method: "PATCH", json: { id: idea.id, topic: idea.topic } });
+      const script = await apiFetch("/api/content/scripts", { method: "POST", json: { brandId, ideaId: idea.id, minSeconds, maxSeconds, language, subtitles } });
+      const video = await apiFetch("/api/videos/generate", { method: "POST", json: { brandId, scriptId: script.script.id, productionOptions: { minSeconds, maxSeconds, language, subtitles, soundDesign }, publishOptions: { platforms, scheduledAt: publishAt ? new Date(publishAt).toISOString() : undefined } } });
+      queued.push(video.video.id);
+    }
+    setSelected([]);
+    return chosen.length + " video üretimi kuyruğa alındı (" + queued.join(", ") + "). İlerlemeyi Video Kütüphanesi'nde izleyebilirsiniz.";
+  }
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
-        <CardHeader>
-          <CardTitle>Tam otomatik üretim</CardTitle>
-          <CardDescription>Sistem konu seçer, senaryo yazar, medya bulur, seslendirir, montajlar ve kalite kontrolünden geçirir.</CardDescription>
-        </CardHeader>
+        <CardHeader><CardTitle>Önce fikir üret</CardTitle><CardDescription>Konuyu ve fikir sayısını belirleyin. Taslaklar düzenlenebilir; burada video başlamaz.</CardDescription></CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <Button
-            size="lg"
-            disabled={!canGenerate || !!busy}
-            onClick={() =>
-              run("auto", async () => {
-                const r = await apiFetch("/api/videos/generate", { method: "POST", json: { brandId } });
-                return `Video kuyruğa alındı (${r.video.id}). İlerlemeyi Video Kütüphanesi'nden izleyebilirsiniz.`;
-              })
-            }
-          >
-            <Clapperboard className="h-4 w-4" />
-            {busy === "auto" ? "Kuyruğa alınıyor…" : "Şimdi bir video üret"}
-          </Button>
-          <div className="flex gap-2">
-            <Input placeholder="veya kendi konunuzu yazın (ör. Ahtapotların üç kalbi)" value={topic} onChange={(e) => setTopic(e.target.value)} />
-            <Button
-              variant="secondary"
-              disabled={topic.trim().length < 5 || !!busy}
-              onClick={() =>
-                run("topic", async () => {
-                  const r = await apiFetch("/api/content/scripts", { method: "POST", json: { brandId, topic } });
-                  setTopic("");
-                  return `Senaryo hazır: "${r.script.title}". Aşağıdan inceleyebilir, sonra videoya dönüştürebilirsiniz.`;
-                })
-              }
-            >
-              <Wand2 className="h-4 w-4" />
-              {busy === "topic" ? "Yazılıyor…" : "Senaryo yaz"}
-            </Button>
+          <Input placeholder="Örn. Türkiye’de gezilecek yerler" value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={300} />
+          <label className="text-sm">Kaç fikir? (1–30)<Input type="number" min={1} max={30} value={count} onChange={(e) => setCount(Math.min(30, Math.max(1, Number(e.target.value) || 1)))} /></label>
+          <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+            <label className="text-sm">Süre aralığı (saniye)<div className="mt-1 flex gap-2"><input aria-label="En kısa süre" type="number" min={15} max={300} value={minSeconds} onChange={(e) => setMinSeconds(Math.min(maxSeconds, Math.max(15, Number(e.target.value) || 60)))} className="w-full rounded-md border bg-background px-2 py-1.5"/><input aria-label="En uzun süre" type="number" min={15} max={300} value={maxSeconds} onChange={(e) => setMaxSeconds(Math.max(minSeconds, Math.min(300, Number(e.target.value) || 60)))} className="w-full rounded-md border bg-background px-2 py-1.5"/></div></label>
+            <label className="text-sm">Video dili<select aria-label="Video dili" value={language} onChange={(e) => setLanguage(e.target.value)} className="mt-1 w-full rounded-md border bg-background px-2 py-2"><option value="tr">Türkçe</option><option value="en">English</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="es">Español</option><option value="ar">العربية</option></select></label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)}/>Altyazı ekle</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={soundDesign} onChange={(e) => setSoundDesign(e.target.checked)}/>Kodla üretilen atmosfer ve vuruş sesleri</label>
+            <fieldset className="text-sm"><legend>Paylaşılacak mecralar</legend><div className="mt-1 flex flex-wrap gap-3">{[["INSTAGRAM","Instagram Reels"],["TIKTOK","TikTok"],["YOUTUBE","YouTube Shorts"],["FACEBOOK","Facebook Reels"]].map(([id,label]) => <label key={id} className="flex items-center gap-1"><input type="checkbox" checked={platforms.includes(id)} onChange={() => setPlatforms((v) => v.includes(id) ? v.filter((x) => x !== id) : [...v,id])}/>{label}</label>)}</div></fieldset>
+            <label className="text-sm">Paylaşım zamanı (boşsa üretim bittiğinde)<input aria-label="Paylaşım zamanı" type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} className="mt-1 w-full rounded-md border bg-background px-2 py-1.5"/></label>
           </div>
+          <Button disabled={!canGenerate || !!busy} onClick={() => run("ideas", makeIdeas)}><Lightbulb className="h-4 w-4" />{busy === "ideas" ? "Fikirler hazırlanıyor…" : "Fikirleri göster"}</Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Seçilen fikirleri üret</CardTitle><CardDescription>Seçtiğiniz fikirler için senaryo hazırlanır ve video kuyruğa alınır.</CardDescription></CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">{selected.length} fikir seçildi</p>
+          <Button size="lg" disabled={!canGenerate || !selected.length || !!busy} onClick={() => run("produce", produceSelected)}><Clapperboard className="h-4 w-4" />{busy === "produce" ? "Seçilenler kuyruğa alınıyor…" : "Seçilen videoları üret"}</Button>
           {msg ? <p role="status" className={msg.tone === "ok" ? "text-sm text-success" : "text-sm text-danger"}>{msg.text}</p> : null}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle>Fikir havuzu</CardTitle>
-            <CardDescription>Tekrarlar otomatik elenir. Bir fikirden senaryo + video üretin.</CardDescription>
-          </div>
-          <Button size="sm" variant="outline" disabled={!!busy} onClick={() => run("ideas", async () => `${(await apiFetch("/api/content/ideas", { method: "POST", json: { brandId, count: 5 } })).ideas.length} yeni fikir eklendi`)}>
-            <Lightbulb className="h-4 w-4" />
-            {busy === "ideas" ? "Üretiliyor…" : "Fikir üret"}
-          </Button>
-        </CardHeader>
-        <CardContent className="flex max-h-96 flex-col gap-2 overflow-y-auto">
-          {ideas.length === 0 ? <p className="text-sm text-muted-foreground">Kullanılmamış fikir yok.</p> : null}
-          {ideas.map((i) => (
-            <div key={i.id} className="flex items-start justify-between gap-3 rounded-lg border border-border p-3">
-              <div className="min-w-0">
-                <div className="text-sm font-medium">{i.topic}</div>
-                {i.angle ? <div className="text-xs text-muted-foreground">{i.angle}</div> : null}
-                {i.category ? <Badge className="mt-1">{i.category}</Badge> : null}
-              </div>
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  size="sm"
-                  disabled={!canGenerate || !!busy}
-                  onClick={() =>
-                    run(i.id, async () => {
-                      const s = await apiFetch("/api/content/scripts", { method: "POST", json: { brandId, ideaId: i.id } });
-                      const v = await apiFetch("/api/videos/generate", { method: "POST", json: { brandId, scriptId: s.script.id } });
-                      return `"${s.script.title}" senaryosu yazıldı ve video kuyruğa alındı (${v.video.id}).`;
-                    })
-                  }
-                >
-                  {busy === i.id ? "…" : "Üret"}
-                </Button>
-                <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => run("rej" + i.id, async () => (await apiFetch("/api/content/ideas", { method: "PATCH", json: { id: i.id, status: "REJECTED" } }), "Fikir reddedildi"))}>
-                  Reddet
-                </Button>
-              </div>
+      <Card className="lg:col-span-2">
+        <CardHeader><CardTitle>Fikir havuzu</CardTitle><CardDescription>Fikir metinlerini düzenleyin, istediklerinizi seçin; istemediklerinizi kaldırın.</CardDescription></CardHeader>
+        <CardContent className="flex max-h-[38rem] flex-col gap-3 overflow-y-auto">
+          {ideas.length === 0 ? <p className="text-sm text-muted-foreground">Henüz fikir yok. Bir konu ve sayı seçip “Fikirleri göster” düğmesine basın.</p> : null}
+          {ideas.map((idea) => <div key={idea.id} className="flex items-start gap-3 rounded-lg border p-3">
+            <input aria-label="Bu fikri seç" type="checkbox" checked={selected.includes(idea.id)} onChange={() => toggle(idea.id)} className="mt-3 h-4 w-4" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Input aria-label="Fikir başlığı" value={idea.topic} maxLength={300} onChange={(e) => setIdeas((old) => old.map((x) => x.id === idea.id ? { ...x, topic: e.target.value } : x))} />
+              {idea.angle ? <p className="text-sm text-muted-foreground">{idea.angle}</p> : null}
+              {idea.category ? <Badge className="mt-1">{idea.category}</Badge> : null}
             </div>
-          ))}
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => run("remove-" + idea.id, async () => { await reject(idea.id); return "Fikir kaldırıldı."; })}>Kaldır</Button>
+          </div>)}
         </CardContent>
       </Card>
     </div>
   );
 }
+

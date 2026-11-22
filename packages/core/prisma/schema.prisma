@@ -118,6 +118,7 @@ enum NotificationSeverity {
 
 enum UsageProvider {
   OPENAI
+  ANTHROPIC
   GOOGLE_TTS
   STOCK_MEDIA
   AI_IMAGE

@@ -74,7 +74,7 @@ YCbCr Matrix: TV.709
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,${o.font},78,&H00FFFFFF,&H00FFFFFF,&H64000000,&H96000000,-1,0,0,0,100,100,0,0,3,14,0,2,90,90,560,1
+Style: Caption,${o.font},86,&H00FFFFFF,&H003DD8FF,&H64000000,&H96000000,-1,0,0,0,100,100,0,0,1,7,2,2,80,80,520,1
 Style: Headline,${o.font},56,&H00FFFFFF,&H00FFFFFF,${assColor(o.primaryColor, 0x20)},&H00000000,-1,0,0,0,100,100,0,0,3,18,0,8,110,110,250,1
 Style: Intro,${o.font},92,&H00FFFFFF,&H00FFFFFF,${assColor(o.primaryColor, 0x10)},&H00000000,-1,0,0,0,100,100,0,0,3,26,0,5,90,90,0,1
 Style: Outro,${o.font},84,&H00FFFFFF,&H00FFFFFF,${assColor(o.accentColor, 0x00)},&H80000000,-1,0,0,0,100,100,0,0,1,0,6,5,90,90,0,1
@@ -85,7 +85,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   const lines: string[] = [];
   if (o.intro) lines.push(`Dialogue: 3,${ts(0)},${ts(o.intro.end)},Intro,,0,0,0,,{\\fad(150,350)\\t(0,250,\\fscx106\\fscy106)\\t(250,500,\\fscx100\\fscy100)}${esc(o.intro.text)}`);
   for (const h of o.headlines) lines.push(`Dialogue: 1,${ts(h.start)},${ts(h.end)},Headline,,0,0,0,,{\\fad(200,200)}${esc(h.text)}`);
-  for (const c of o.captions) lines.push(`Dialogue: 2,${ts(c.start)},${ts(c.end)},Caption,,0,0,0,,{\\fad(60,60)}${esc(c.text.toLocaleUpperCase("tr"))}`);
+  for (const c of o.captions) {
+    const words = c.text.toLocaleUpperCase("tr").split(/\s+/).filter(Boolean);
+    const totalCs = Math.max(words.length, Math.round((c.end - c.start) * 100));
+    const totalChars = words.reduce((n, word) => n + word.length, 0) || 1;
+    let remaining = totalCs;
+    const karaoke = words.map((word, i) => {
+      const duration = i === words.length - 1 ? remaining : Math.max(1, Math.round(totalCs * word.length / totalChars));
+      remaining -= duration;
+      return "{\\kf" + duration + "}" + esc(word);
+    }).join(" ");
+    lines.push("Dialogue: 2," + ts(c.start) + "," + ts(c.end) + ",Caption,0,0,0,,{\\fad(80,60)\\fscx108\\fscy108\\t(0,100,\\fscx100\\fscy100)}" + karaoke);
+  }
   if (o.outro) lines.push(`Dialogue: 3,${ts(o.outro.start)},${ts(o.outro.end)},Outro,,0,0,0,,{\\fad(300,0)\\move(540,1060,540,1000,0,400)}${esc(o.outro.text)}`);
   return header + lines.join("\n") + "\n";
 }
