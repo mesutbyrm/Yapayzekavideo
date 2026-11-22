@@ -2,7 +2,8 @@
 export const dict = {
   tr: {
     nav: {
-      dashboard: "Dashboard",\n      social: "Social Publishing",\n      social: "Sosyal Medya Yayın Merkezi",
+      dashboard: "Dashboard",
+      social: "Sosyal Medya Yayın Merkezi",
       generate: "Video Üret",
       automation: "Otomatik Üretim",
       calendar: "İçerik Takvimi",
@@ -22,6 +23,7 @@ export const dict = {
   en: {
     nav: {
       dashboard: "Dashboard",
+      social: "Social Publishing",
       generate: "Generate Video",
       automation: "Automation",
       calendar: "Content Calendar",
