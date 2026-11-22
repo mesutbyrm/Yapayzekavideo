@@ -1,5 +1,6 @@
 import path from "node:path";
 import { mkdir, rm } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { prisma, Prisma, type VideoStatus } from "../lib/db";
 import { env } from "../lib/env";
 import { logger } from "../lib/logger";
@@ -22,13 +23,31 @@ import { audit } from "../lib/audit";
 import { reportProgress, type ProgressStage } from "./progress";
 
 /** Yeni video kaydı oluşturur ve üretim kuyruğuna ekler. Limit ve bütçe önceden kontrol edilir. */
-async function synthesizeSoundDesign(workDir: string, durationSec: number): Promise<string> {
+function soundDesignScript(): string {
+  try { return path.resolve(process.cwd(), "packages/core/src/video/sound_design.py"); }
+  catch { return path.resolve(process.cwd(), "../../packages/core/src/video/sound_design.py"); }
+}
+
+async function synthesizeSoundDesign(workDir: string, durationSec: number, transitions: number[], accents: number[]): Promise<string> {
   const out = path.join(workDir, "sound-design.wav");
-  const duration = Math.max(10, Math.ceil(durationSec));
-  const tail = Math.max(1, duration - 1);
-  await ffmpeg(["-y", "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.018:duration=" + duration, "-f", "lavfi", "-i", "aevalsrc=0.12*sin(2*PI*110*t)*lt(mod(t\\,7)\\,0.16):s=48000:d=" + duration, "-filter_complex", "[0:a]lowpass=f=480,volume=0.28[amb];[1:a]lowpass=f=900,volume=0.55[hit];[amb][hit]amix=inputs=2:duration=longest:normalize=0,afade=t=out:st=" + tail + ":d=1[out]", "-map", "[out]", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", out], 120);
+  const script = soundDesignScript();
+  const py = env().MOTION_ART_PYTHON || "python3";
+  const args = [script, "--out", out, "--duration", String(durationSec), "--transitions", transitions.join(","), "--accents", accents.join(",")];
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(py, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Ses tasarımı zaman aşımına uğradı")); }, 120_000);
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-4000); });
+    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error("Kodla ses tasarımı üretilemedi: " + stderr.slice(-1200)));
+    });
+  });
   return out;
 }
+
 export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string } }) {
   const limits = await generationLimits(brandId, new Date(), opts.trigger);
   if (!limits.allowed) {
@@ -125,7 +144,12 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     }
     const music = brand.musicEnabled ? await pickMusic(brand.id, workDir).catch(() => null) : null;
     await reportProgress(videoId, "RENDERING", 0.02, "Müzik ve ses tasarımı");
-    const designedTrack = productionOptions.soundDesign === false ? null : await synthesizeSoundDesign(workDir, tts.durationSec);
+    const contentDuration = Math.max(1, tts.durationSec);
+    const transitions: number[] = [];
+    let sceneTime = 0;
+    for (let i = 0; i < scenes.length - 1; i++) { sceneTime += scenes[i].duration; transitions.push(Math.min(contentDuration - 0.4, sceneTime)); }
+    const accents = tts.words.filter((w) => /[!?]$/.test(w.word)).slice(0, 8).map((w) => w.end);
+    const designedTrack = productionOptions.soundDesign === false ? null : await synthesizeSoundDesign(workDir, contentDuration, transitions, accents);
     let backgroundTrack = music?.file ?? null;
     if (designedTrack && backgroundTrack) { const mixed = path.join(workDir, "background-mix.mp3"); await ffmpeg(["-y", "-i", backgroundTrack, "-i", designedTrack, "-t", String(Math.max(10, tts.durationSec)), "-filter_complex", "[0:a]volume=0.42[music];[1:a]volume=0.72[design];[music][design]amix=inputs=2:duration=shortest:normalize=0[out]", "-map", "[out]", "-codec:a", "libmp3lame", "-q:a", "4", mixed], 120); backgroundTrack = mixed; }
     else if (designedTrack) backgroundTrack = designedTrack;
