@@ -4,6 +4,8 @@ import { NotConfiguredError, ProviderError } from "../lib/errors";
 import { assertCanSpend, recordUsage } from "../budget/budget";
 import { anthropicCost, openAiCost } from "../budget/pricing";
 import { getProviderApiKeys } from "./provider-keys";
+import { claudeJson } from "./anthropic";
+import { logger } from "../lib/logger";
 
 let client: OpenAI | null = null;
 let clientKey: string | undefined;
@@ -69,7 +71,11 @@ export async function chatJson<T = unknown>(opts: {
   const keys = await getProviderApiKeys();
   const anthropicKey = keys.anthropic ?? settings.ANTHROPIC_API_KEY;
   const openaiKey = keys.openai ?? settings.OPENAI_API_KEY;
-  const provider = (keys.activeProvider ?? opts.provider ?? settings.AI_TEXT_PROVIDER) === "anthropic" && anthropicKey ? "anthropic" : "openai";
+  const wanted = keys.activeProvider ?? opts.provider ?? settings.AI_TEXT_PROVIDER;
+  const provider = wanted === "anthropic" && anthropicKey ? "anthropic" : "openai";
+  if (wanted === "anthropic" && !anthropicKey) {
+    logger.warn({ operation: opts.operation }, "Claude seçili ama Anthropic API anahtarı yok; OpenAI kullanılıyor");
+  }
   const model = (provider === "anthropic" ? keys.models?.anthropic : keys.models?.openai) ?? (provider === "anthropic" ? settings.ANTHROPIC_MODEL : settings.OPENAI_MODEL);
   const outputLimit = opts.maxOutputTokens ?? 4000;
   const estimatedCost = provider === "anthropic" ? anthropicCost(3000, outputLimit) : openAiCost(3000, outputLimit);
@@ -79,22 +85,10 @@ export async function chatJson<T = unknown>(opts: {
   let outputTokens = 0;
   try {
     if (provider === "anthropic") {
-      const schemaInstruction = opts.jsonSchema ? " Required JSON Schema: " + JSON.stringify(opts.jsonSchema) : "";
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": anthropicKey!, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model, max_tokens: outputLimit, system: opts.system + String.fromCharCode(10, 10) + "Return exactly one valid JSON object and no Markdown." + schemaInstruction, messages: [{ role: "user", content: opts.user }] }),
-        signal: AbortSignal.timeout(90_000),
-      });
-      const payload = await response.json() as any;
-      if (!response.ok) {
-        const status = response.status;
-        const kind = status === 401 || status === 403 ? "auth" : status === 429 ? "rate_limit" : status === 400 ? "validation" : status >= 500 ? "transient" : "unknown";
-        throw new ProviderError("Claude API error: " + (payload?.error?.message ?? response.statusText), "anthropic", payload?.error?.type ?? "ANTHROPIC_ERROR", status === 429 || status >= 500, status, kind);
-      }
-      rawText = (payload?.content ?? []).filter((part: any) => part.type === "text").map((part: any) => part.text).join(String.fromCharCode(10));
-      inputTokens = Number(payload?.usage?.input_tokens ?? 0);
-      outputTokens = Number(payload?.usage?.output_tokens ?? 0);
+      const r = await claudeJson({ apiKey: anthropicKey!, model, system: opts.system, user: opts.user, maxOutputTokens: outputLimit, jsonSchema: opts.jsonSchema });
+      rawText = r.rawText;
+      inputTokens = r.inputTokens;
+      outputTokens = r.outputTokens;
     } else {
       // Akıl yürüten modeller (gpt-5*, o*) düşünme token'larını da çıktı limitinden harcar; limit dolunca JSON yarıda kesilir.
       // Bu yüzden düşünme düşük tutulur ve bu modellere ek pay verilir.
