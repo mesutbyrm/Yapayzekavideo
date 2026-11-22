@@ -49,7 +49,7 @@ async function synthesizeSoundDesign(workDir: string, durationSec: number, trans
   return out;
 }
 
-export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string } }) {
+export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string; scheduledAtByPlatform?: Record<string, string> } }) {
   const limits = await generationLimits(brandId, new Date(), opts.trigger);
   if (!limits.allowed) {
     if (opts.trigger === "auto" && /günlük limiti/.test(limits.reason ?? "")) {
@@ -226,7 +226,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     await notify({ type: "VIDEO_GENERATED", severity: "SUCCESS", brandId: brand.id, title: "Video üretildi", message: `${script.title} (${qc.metrics.durationSec?.toFixed(1)} sn, $${Number(updated.costUsd).toFixed(4)})`, data: { videoId } });
 
     // 7) Yayın işleri
-    if (publishOptions.platforms?.length) await createPublishJobs(videoId, { platforms: publishOptions.platforms as any, scheduledAt: publishOptions.scheduledAt ? new Date(publishOptions.scheduledAt) : undefined });
+    if (publishOptions.platforms?.length) await createPublishJobs(videoId, { platforms: publishOptions.platforms as any, scheduledAt: publishOptions.scheduledAt ? new Date(publishOptions.scheduledAt) : undefined, scheduledAtByPlatform: Object.fromEntries(Object.entries(publishOptions.scheduledAtByPlatform ?? {}).map(([platform, time]) => [platform, new Date(time)])) as any });
     else if (brand.autoPublish) await createPublishJobs(videoId);
 
     const limits = await generationLimits(brand.id);
