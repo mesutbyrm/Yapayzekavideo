@@ -95,7 +95,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       script = await generateScript(brand.id, idea.id, videoId, productionOptions);
       await prisma.video.update({ where: { id: videoId }, data: { scriptId: script.id, title: script.title } });
     }
-    const scenes = script.scenes as unknown as { duration: number; visual_description: string; search_keywords?: string[]; subtitle: string }[];
+    const scenes = script.scenes as unknown as { duration: number; visual_description: string; search_keywords?: string[]; subtitle: string; scene_3d?: unknown }[];
 
     // 3) Medya
     await setStatus(videoId, "FETCHING_MEDIA", { title: script.title });
@@ -131,7 +131,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     else if (designedTrack) backgroundTrack = designedTrack;
     const render = await renderVideo({
       workDir,
-      scenes: resolved.map((r, i) => ({ ...r, durationSec: scenes[i].duration, visualDescription: scenes[i].visual_description, subtitle: productionOptions.subtitles === false ? "" : scenes[i].subtitle })),
+      scenes: resolved.map((r, i) => ({ ...r, durationSec: scenes[i].duration, visualDescription: scenes[i].visual_description, scene3d: scenes[i].scene_3d, subtitle: productionOptions.subtitles === false ? "" : scenes[i].subtitle })),
       voicePath: tts.mp3Path,
       voiceDurationSec: tts.durationSec,
       words: tts.words,
