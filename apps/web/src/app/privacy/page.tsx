@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 const sections = [
   {
     title: "Bu politika hakkında",
-    body: "Bu politika, GirLive / AI Social Factory kısa video üretim ve sosyal medya yayınlama hizmetinin hangi bilgileri işlediğini, bunları neden kullandığını ve kullanıcıların hangi kontrolleri kullanabileceğini açıklar. Hizmet sahibi ve veri sorumlusu iletişim bilgisi yayın öncesinde aşağıda tamamlanmalıdır.",
+    body: "Bu politika, GirLive / AI Social Factory kısa video üretim ve sosyal medya yayınlama hizmetinin hangi bilgileri işlediğini, bunları neden kullandığını ve kullanıcıların hangi kontrolleri kullanabileceğini açıklar. Gizlilik soruları ve talepleri için: canlifal0@gmail.com.",
   },
   {
     title: "İşlediğimiz bilgiler",
@@ -41,7 +41,7 @@ const sections = [
   },
   {
     title: "Güncellemeler ve iletişim",
-    body: "Hizmet veya veri uygulamaları değişirse bu politika güncellenebilir. Gizlilik talepleri ve sorular için yayın öncesinde gerçek ve herkese açık bir iletişim adresi eklenmelidir.",
+    body: "Hizmet veya veri uygulamaları değişirse bu politika güncellenebilir. Gizlilik talepleri ve sorular için canlifal0@gmail.com adresinden bize ulaşabilirsiniz.",
   },
 ];
 
@@ -52,7 +52,7 @@ export default function PrivacyPage() {
         <a href="/" className="text-sm text-sky-300 underline">GirLive</a>
         <h1 className="mt-6 text-3xl font-bold tracking-tight sm:text-4xl">Gizlilik Politikası</h1>
         <p className="mt-3 text-sm text-slate-400">Son güncelleme: 22 Kasım 2026</p>
-        <p className="mt-6 leading-7 text-slate-300">Bu sayfa Meta uygulama yayını için taslak olarak hazırlanmıştır. Yayınlanmadan önce hizmet sahibinin iletişim adresi ve içerik doğruluğu kontrol edilmelidir.</p>
+        <p className="mt-6 leading-7 text-slate-300">Gizlilik Politikası, GirLive ve AI Social Factory hizmetlerinde işlenen kişisel verileri ve kullanıcıların bu veriler üzerindeki kontrollerini açıklar. Sorularınız için canlifal0@gmail.com adresinden bize ulaşabilirsiniz.</p>
         <div className="mt-10 space-y-8">
           {sections.map((section) => (
             <section key={section.title}>
@@ -60,9 +60,6 @@ export default function PrivacyPage() {
               <p className="mt-3 leading-7 text-slate-300">{section.body}</p>
             </section>
           ))}
-        </div>
-        <div className="mt-10 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
-          Taslak notu: Gizlilik talepleri için kullanılacak herkese açık iletişim adresi henüz eklenmedi. Bu not, gerçek iletişim adresi eklenip metin onaylanmadan kaldırılmamalıdır.
         </div>
       </article>
     </main>
