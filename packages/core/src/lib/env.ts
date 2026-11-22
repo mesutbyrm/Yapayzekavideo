@@ -74,7 +74,7 @@ const schema = z.object({
   // Meta (Instagram + Facebook)
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
-  META_GRAPH_VERSION: z.string().default("v26.0"),
+  META_GRAPH_VERSION: z.string().default("v27.0"),
 
   // TikTok
   TIKTOK_CLIENT_KEY: z.string().optional(),
