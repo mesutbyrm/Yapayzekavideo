@@ -94,7 +94,7 @@ export async function pickIdea(brandId: string) {
  * Senaryo üretimi: JSON şema doğrulama + süre kontrolü + tekrar kontrolü + güvenlik.
  * Hatalı çıktıda hatalar modele geri bildirilerek en fazla 3 kez kontrollü yeniden üretim yapılır.
  */
-export async function generateScript(brandId: string, ideaId: string, videoId?: string | null, opts?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean }) {
+export async function generateScript(brandId: string, ideaId: string, videoId?: string | null, opts?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; brief?: string }) {
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } });
   const idea = await prisma.contentIdea.findUniqueOrThrow({ where: { id: ideaId } });
   if (idea.brandId !== brandId) throw new AppError("Fikir bu markaya ait değil", "FORBIDDEN", 403);
@@ -116,7 +116,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
     try {
       const res = await chatJson<unknown>({
         system: scriptSystem(minSeconds, maxSeconds, languageName),
-        user: scriptUser(ctx, idea.topic, idea.angle, feedback) + "\nWrite the title, hook, narration, subtitles, CTA, and metadata entirely in " + languageName + ".",
+        user: scriptUser(ctx, idea.topic, idea.angle, feedback, opts?.brief) + "\nWrite the title, hook, narration, subtitles, CTA, and metadata entirely in " + languageName + ".",
         brandId,
         videoId,
         operation: "content.script",
