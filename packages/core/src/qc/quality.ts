@@ -31,6 +31,7 @@ export interface QcInput {
   filePath: string;
   minDurationSec: number;
   maxDurationSec: number;
+  videoFormat?: "portrait" | "landscape";
   maxSizeMb: number;
   captionsCount: number;
   /** Medya manifestosu: her sahnenin lisans bilgisi */
@@ -43,7 +44,7 @@ export interface QcInput {
 /** EBU R128 entegre ses yüksekliği */
 export async function measureLoudness(file: string) {
   try {
-    const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", "ebur128=framelog=quiet,volumedetect", "-f", "null", "-"], { timeoutSec: 180 });
+    const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", "ebur128=framelog=quiet,volumedetect", "-f", "null", "-"], { timeoutSec: 900 });
     const i = /I:\s+(-?[\d.]+)\s+LUFS/.exec(stderr.split("Summary:").pop() ?? "");
     const mx = /max_volume:\s+(-?[\d.]+) dB/.exec(stderr);
     return { integratedLufs: i ? Number(i[1]) : null, maxVolumeDb: mx ? Number(mx[1]) : null };
@@ -53,7 +54,7 @@ export async function measureLoudness(file: string) {
 }
 
 export async function detectBlack(file: string) {
-  const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-vf", "blackdetect=d=0.5:pic_th=0.97:pix_th=0.08", "-an", "-f", "null", "-"], { timeoutSec: 240 });
+  const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-vf", "blackdetect=d=0.5:pic_th=0.97:pix_th=0.08", "-an", "-f", "null", "-"], { timeoutSec: 900 });
   let total = 0;
   for (const m of stderr.matchAll(/black_duration:\s*([\d.]+)/g)) total += Number(m[1]);
   return total;
@@ -61,7 +62,7 @@ export async function detectBlack(file: string) {
 
 export async function decodeErrors(file: string) {
   try {
-    const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-v", "error", "-i", file, "-f", "null", "-"], { timeoutSec: 240 });
+    const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-v", "error", "-i", file, "-f", "null", "-"], { timeoutSec: 900 });
     return stderr.split("\n").filter((l) => l.trim()).length;
   } catch {
     return 999;
@@ -94,9 +95,13 @@ export async function runQualityCheck(input: QcInput): Promise<QcReport> {
   metrics.fps = p.video?.fps;
 
   add({ id: "duration", label: "Video süresi", passed: p.durationSec >= input.minDurationSec - 0.5 && p.durationSec <= input.maxDurationSec + 0.5, value: Number(p.durationSec.toFixed(2)), expected: `${input.minDurationSec}-${input.maxDurationSec} sn`, severity: "error" });
-  add({ id: "resolution", label: "Çözünürlük", passed: p.video?.width === 1080 && p.video?.height === 1920, value: `${p.video?.width}x${p.video?.height}`, expected: "1080x1920", severity: "error" });
+  const landscape = input.videoFormat === "landscape";
+  const expectedWidth = landscape ? 1920 : 1080;
+  const expectedHeight = landscape ? 1080 : 1920;
+  const expectedRatio = landscape ? 16 / 9 : 9 / 16;
+  add({ id: "resolution", label: "Çözünürlük", passed: p.video?.width === expectedWidth && p.video?.height === expectedHeight, value: `${p.video?.width}x${p.video?.height}`, expected: `${expectedWidth}x${expectedHeight}`, severity: "error" });
   const ratio = p.video ? p.video.width / p.video.height : 0;
-  add({ id: "aspect", label: "En-boy oranı", passed: Math.abs(ratio - 9 / 16) < 0.01, value: ratio.toFixed(4), expected: "9:16 (0.5625)", severity: "error" });
+  add({ id: "aspect", label: "En-boy oranı", passed: Math.abs(ratio - expectedRatio) < 0.01, value: ratio.toFixed(4), expected: landscape ? "16:9 (1.7778)" : "9:16 (0.5625)", severity: "error" });
   add({ id: "fps", label: "Kare hızı", passed: !!p.video && Math.abs(p.video.fps - 30) < 0.5, value: p.video?.fps, expected: "30", severity: "error" });
   add({ id: "vcodec", label: "Video codec", passed: p.video?.codec === "h264" && p.video?.pixFmt === "yuv420p", value: `${p.video?.codec}/${p.video?.pixFmt}`, expected: "h264/yuv420p", severity: "error" });
   add({ id: "audio", label: "Ses var", passed: !!p.audio, value: p.audio ? `${p.audio.codec} ${p.audio.sampleRate}Hz ${p.audio.channels}ch` : "yok", expected: "aac", severity: "error" });

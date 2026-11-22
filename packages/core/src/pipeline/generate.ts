@@ -37,7 +37,7 @@ async function synthesizeSoundDesign(workDir: string, durationSec: number, trans
   await new Promise<void>((resolve, reject) => {
     const child = spawn(py, args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Ses tasarımı zaman aşımına uğradı")); }, 120_000);
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Ses tasarımı zaman aşımına uğradı")); }, Math.max(120_000, durationSec * 1_000));
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-4000); });
     child.once("error", (error) => { clearTimeout(timer); reject(error); });
     child.once("close", (code) => {
@@ -49,7 +49,7 @@ async function synthesizeSoundDesign(workDir: string, durationSec: number, trans
   return out;
 }
 
-export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string; scheduledAtByPlatform?: Record<string, string> } }) {
+export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: Date | null; trigger: "auto" | "manual"; userId?: string | null; scriptId?: string | null; productionOptions?: { minSeconds?: number; maxSeconds?: number; videoFormat?: "portrait" | "landscape"; language?: string; subtitles?: boolean; soundDesign?: boolean }; publishOptions?: { platforms?: string[]; scheduledAt?: string; scheduledAtByPlatform?: Record<string, string> } }) {
   const limits = await generationLimits(brandId, new Date(), opts.trigger);
   if (!limits.allowed) {
     if (opts.trigger === "auto" && /günlük limiti/.test(limits.reason ?? "")) {
@@ -57,7 +57,10 @@ export async function enqueueGeneration(brandId: string, opts: { scheduleSlot?: 
     }
     throw new AppError(limits.reason ?? "Üretim limiti", "LIMIT_REACHED", 429, limits);
   }
-  await assertCanSpend(brandId, estimateVideoCost(), "video.generate");
+  const priorScript = opts.scriptId ? await prisma.videoScript.findUnique({ where: { id: opts.scriptId }, select: { narration: true } }) : null;
+  const expectedNarrationChars = priorScript?.narration.length ?? Math.ceil((opts.productionOptions?.maxSeconds ?? 60) * 6);
+  const expectedOutputTokens = Math.min(24_000, Math.max(2_500, Math.ceil((opts.productionOptions?.maxSeconds ?? 60) * 24)));
+  await assertCanSpend(brandId, estimateVideoCost({ narrationChars: expectedNarrationChars, outputTokens: expectedOutputTokens }), "video.generate");
   let video;
   try {
     video = await prisma.video.create({ data: { brandId, scheduleSlot: opts.scheduleSlot ?? null, trigger: opts.trigger, scriptId: opts.scriptId ?? null, status: "QUEUED", mediaManifest: { production: opts.productionOptions ?? {}, publish: opts.publishOptions ?? {} } } });
@@ -149,10 +152,10 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     const transitions: number[] = [];
     let sceneTime = 0;
     for (let i = 0; i < scenes.length - 1; i++) { sceneTime += scenes[i].duration; transitions.push(Math.min(contentDuration - 0.4, sceneTime)); }
-    const accents = tts.words.filter((w) => /[!?]$/.test(w.word)).slice(0, 8).map((w) => w.end);
+    const accents = tts.words.filter((w) => /[!?]$/.test(w.word)).slice(0, Math.min(80, Math.ceil(tts.durationSec / 8))).map((w) => w.end);
     const designedTrack = productionOptions.soundDesign === false ? null : await synthesizeSoundDesign(workDir, contentDuration, transitions, accents);
     let backgroundTrack = music?.file ?? null;
-    if (designedTrack && backgroundTrack) { const mixed = path.join(workDir, "background-mix.mp3"); await ffmpeg(["-y", "-i", backgroundTrack, "-i", designedTrack, "-t", String(Math.max(10, tts.durationSec)), "-filter_complex", "[0:a]volume=0.42[music];[1:a]volume=0.72[design];[music][design]amix=inputs=2:duration=shortest:normalize=0[out]", "-map", "[out]", "-codec:a", "libmp3lame", "-q:a", "4", mixed], 120); backgroundTrack = mixed; }
+    if (designedTrack && backgroundTrack) { const mixed = path.join(workDir, "background-mix.mp3"); await ffmpeg(["-y", "-stream_loop", "-1", "-i", backgroundTrack, "-i", designedTrack, "-t", String(Math.max(10, tts.durationSec)), "-filter_complex", "[0:a]volume=0.42[music];[1:a]volume=0.72[design];[music][design]amix=inputs=2:duration=first:normalize=0[out]", "-map", "[out]", "-codec:a", "libmp3lame", "-q:a", "4", mixed], Math.max(120, Math.ceil(tts.durationSec * 2))); backgroundTrack = mixed; }
     else if (designedTrack) backgroundTrack = designedTrack;
     const render = await renderVideo({
       workDir,
@@ -168,6 +171,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       cta: script.cta,
       minDurationSec: productionOptions.minSeconds ?? brand.minDurationSec,
       maxDurationSec: productionOptions.maxSeconds ?? brand.maxDurationSec,
+      videoFormat: productionOptions.videoFormat ?? "portrait",
       onProgress: (fraction, detail) => reportProgress(videoId, "RENDERING", 0.05 + fraction * 0.95, detail),
     });
 
@@ -184,7 +188,8 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
       filePath: render.outputPath,
       minDurationSec: productionOptions.minSeconds ?? brand.minDurationSec,
       maxDurationSec: productionOptions.maxSeconds ?? brand.maxDurationSec,
-      maxSizeMb: Number(await getSetting("video.maxSizeMb")),
+      videoFormat: productionOptions.videoFormat ?? "portrait",
+      maxSizeMb: productionOptions.videoFormat === "landscape" || (productionOptions.maxSeconds ?? brand.maxDurationSec) > 180 ? 1000 : Number(await getSetting("video.maxSizeMb")),
       captionsCount: render.captions.length,
       media: manifest.scenes,
       contentBlocking: script.status === "REJECTED" ? ["senaryo reddedildi"] : [],
@@ -226,7 +231,10 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     await notify({ type: "VIDEO_GENERATED", severity: "SUCCESS", brandId: brand.id, title: "Video üretildi", message: `${script.title} (${qc.metrics.durationSec?.toFixed(1)} sn, $${Number(updated.costUsd).toFixed(4)})`, data: { videoId } });
 
     // 7) Yayın işleri
-    if (publishOptions.platforms?.length) await createPublishJobs(videoId, { platforms: publishOptions.platforms as any, scheduledAt: publishOptions.scheduledAt ? new Date(publishOptions.scheduledAt) : undefined, scheduledAtByPlatform: Object.fromEntries(Object.entries(publishOptions.scheduledAtByPlatform ?? {}).map(([platform, time]) => [platform, new Date(String(time))])) as any });
+    const longFormOnly = (qc.metrics.durationSec ?? 0) > 180 || productionOptions.videoFormat === "landscape";
+    if (longFormOnly) {
+      await notify({ type: "VIDEO_GENERATED", severity: "INFO", brandId: brand.id, title: "Uzun format video hazır", message: `${script.title}: Shorts/Reels otomatik yayınına gönderilmedi. Videoyu kütüphaneden indirip uzun video olarak yükleyebilirsiniz.`, data: { videoId } });
+    } else if (publishOptions.platforms?.length) await createPublishJobs(videoId, { platforms: publishOptions.platforms as any, scheduledAt: publishOptions.scheduledAt ? new Date(publishOptions.scheduledAt) : undefined, scheduledAtByPlatform: Object.fromEntries(Object.entries(publishOptions.scheduledAtByPlatform ?? {}).map(([platform, time]) => [platform, new Date(String(time))])) as any });
     else if (brand.autoPublish) await createPublishJobs(videoId);
 
     const limits = await generationLimits(brand.id);
