@@ -35,8 +35,8 @@ def main():
     bed = (0.035 * np.sin(2 * math.pi * 55 * t + 0.22 * np.sin(2 * math.pi * 0.08 * t))
            + 0.019 * np.sin(2 * math.pi * 82.4 * t + 0.3 * np.sin(2 * math.pi * 0.11 * t))
            + 0.010 * np.sin(2 * math.pi * 110 * t))
-    noise = rng.standard_normal(n).astype(np.float32)
-    smooth = np.convolve(noise, np.ones(321, dtype=np.float32) / 321, mode="same")
+    noise = rng.standard_normal(max(1, n // 320)).astype(np.float32)
+    smooth = np.interp(np.arange(n, dtype=np.float32) / 320, np.arange(noise.size, dtype=np.float32), noise).astype(np.float32)
     bed += smooth * 0.11
     left = bed.copy()
     right = bed.copy()
