@@ -226,7 +226,7 @@ export async function generateVideo(videoId: string, attemptsMade = 0) {
     await notify({ type: "VIDEO_GENERATED", severity: "SUCCESS", brandId: brand.id, title: "Video üretildi", message: `${script.title} (${qc.metrics.durationSec?.toFixed(1)} sn, $${Number(updated.costUsd).toFixed(4)})`, data: { videoId } });
 
     // 7) Yayın işleri
-    if (publishOptions.platforms?.length) await createPublishJobs(videoId, { platforms: publishOptions.platforms as any, scheduledAt: publishOptions.scheduledAt ? new Date(publishOptions.scheduledAt) : undefined, scheduledAtByPlatform: Object.fromEntries(Object.entries(publishOptions.scheduledAtByPlatform ?? {}).map(([platform, time]) => [platform, new Date(time)])) as any });
+    if (publishOptions.platforms?.length) await createPublishJobs(videoId, { platforms: publishOptions.platforms as any, scheduledAt: publishOptions.scheduledAt ? new Date(publishOptions.scheduledAt) : undefined, scheduledAtByPlatform: Object.fromEntries(Object.entries(publishOptions.scheduledAtByPlatform ?? {}).map(([platform, time]) => [platform, new Date(String(time))])) as any });
     else if (brand.autoPublish) await createPublishJobs(videoId);
 
     const limits = await generationLimits(brand.id);
