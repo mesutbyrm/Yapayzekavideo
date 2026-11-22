@@ -16,6 +16,23 @@ export function openai(apiKey: string | undefined = env().OPENAI_API_KEY): OpenA
   return client;
 }
 
+const REASONING_HEADROOM = 6000;
+
+export function isReasoningModel(model: string): boolean {
+  return /^(gpt-5|o\d)/i.test(model);
+}
+
+/** Model JSON'u ```json ... ``` bloğuna sararsa ya da önüne/arkasına metin eklerse yalnızca JSON nesnesini alır */
+export function extractJson(raw: string): string {
+  const text = raw.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(text);
+  if (fenced) return fenced[1];
+  if (text.startsWith("{") || text.startsWith("[")) return text;
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  return start >= 0 && end > start ? text.slice(start, end + 1) : text;
+}
+
 /** Testlerde sahte istemci enjekte etmek için */
 export function setOpenAiClient(c: OpenAI | null) {
   client = c;
@@ -79,12 +96,19 @@ export async function chatJson<T = unknown>(opts: {
       inputTokens = Number(payload?.usage?.input_tokens ?? 0);
       outputTokens = Number(payload?.usage?.output_tokens ?? 0);
     } else {
+      // Akıl yürüten modeller (gpt-5*, o*) düşünme token'larını da çıktı limitinden harcar; limit dolunca JSON yarıda kesilir.
+      // Bu yüzden düşünme düşük tutulur ve bu modellere ek pay verilir.
+      const reasoning = isReasoningModel(model);
       const response = await openai(openaiKey).chat.completions.create({
         model,
         messages: [{ role: "system", content: opts.system }, { role: "user", content: opts.user }],
         response_format: opts.jsonSchema ? { type: "json_schema", json_schema: { name: opts.schemaName ?? "output", schema: opts.jsonSchema, strict: false } } : { type: "json_object" },
-        max_completion_tokens: outputLimit,
+        max_completion_tokens: reasoning ? outputLimit + REASONING_HEADROOM : outputLimit,
+        ...(reasoning ? { reasoning_effort: "low" as const } : {}),
       });
+      if (response.choices[0]?.finish_reason === "length") {
+        throw new ProviderError("OpenAI yanıtı token limitinde kesildi", "openai", "OUTPUT_TRUNCATED", true, undefined, "validation");
+      }
       rawText = response.choices[0]?.message?.content ?? "";
       inputTokens = response.usage?.prompt_tokens ?? 0;
       outputTokens = response.usage?.completion_tokens ?? 0;
@@ -98,7 +122,7 @@ export async function chatJson<T = unknown>(opts: {
   const costUsd = provider === "anthropic" ? anthropicCost(inputTokens, outputTokens) : openAiCost(inputTokens, outputTokens);
   await recordUsage({ brandId: opts.brandId, videoId: opts.videoId, provider: provider === "anthropic" ? "ANTHROPIC" : "OPENAI", operation: opts.operation, model, inputTokens, outputTokens, costUsd });
   let data: T;
-  try { data = JSON.parse(rawText) as T; }
+  try { data = JSON.parse(extractJson(rawText)) as T; }
   catch { throw new ProviderError((provider === "anthropic" ? "Claude" : "OpenAI") + " geçersiz JSON döndürdü", provider, "INVALID_JSON", true, undefined, "validation", rawText.slice(0, 500)); }
   return { data, rawText, inputTokens, outputTokens, costUsd, model, provider: provider === "anthropic" ? "ANTHROPIC" : "OPENAI" };
 }
