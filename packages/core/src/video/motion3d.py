@@ -12,7 +12,7 @@ Kamera: orbit, dolly, crane, static.
 import argparse, json, math, sys
 import numpy as np
 
-SHAPES = {"sphere", "cube", "slab", "pillar", "cylinder", "coin", "ring", "helix", "bar_chart", "coin_stack", "grid", "phone", "planet"}
+SHAPES = {"sphere", "cube", "slab", "pillar", "cylinder", "coin", "ring", "helix", "bar_chart", "coin_stack", "grid", "phone", "planet", "brain", "eye", "lightbulb", "magnifier", "rocket", "gear", "hourglass", "book", "cat"}
 MOTIONS = {"spin", "bob", "orbit", "pulse", "bounce", "float", "none"}
 CAMERAS = {"orbit", "dolly", "crane", "static"}
 FLOOR_Y = -1.25
@@ -128,7 +128,67 @@ def expand(obj, t, palette):
     c = base + off; s = size * scale
     out = []
     second = palette[(obj["ci"] + 1) % len(palette)]
-    if shape == "sphere":
+    if shape == "brain":
+        for k in range(9):
+            a = 2 * math.pi * k / 9
+            p = R @ np.array([0.68 * s * math.cos(a), 0.52 * s * math.sin(a), 0.12 * s * math.sin(2 * a)], np.float32)
+            out.append(Prim("sphere", c + p, R, 0.48 * s, color if k % 2 else second, gloss=0.75))
+        out.append(Prim("sphere", c + R @ np.array([0, -0.48 * s, 0], np.float32), R, 0.18 * s, second, gloss=0.5))
+    elif shape == "eye":
+        out.extend([Prim("sphere", c, R, s, (0.92, 0.96, 1.0), gloss=0.9),
+                    Prim("sphere", c + R @ np.array([0, 0, -0.82 * s], np.float32), R, 0.46 * s, color, gloss=0.85),
+                    Prim("sphere", c + R @ np.array([0, 0, -1.22 * s], np.float32), R, 0.22 * s, (0.03, 0.04, 0.08), gloss=0.9),
+                    Prim("sphere", c + R @ np.array([-0.13 * s, 0.15 * s, -1.38 * s], np.float32), R, 0.08 * s, (1, 1, 1), gloss=1.0)])
+    elif shape == "lightbulb":
+        out.extend([Prim("sphere", c + R @ np.array([0, 0.28 * s, 0], np.float32), R, 0.78 * s, color, gloss=0.9),
+                    Prim("cyl", c + R @ np.array([0, -0.68 * s, 0], np.float32), R, 0.42 * s, second, h=0.42, gloss=0.8),
+                    Prim("cyl", c + R @ np.array([0, -1.05 * s, 0], np.float32), R, 0.32 * s, (0.15, 0.17, 0.23), h=0.12, gloss=0.7)])
+    elif shape == "magnifier":
+        for k in range(20):
+            a = 2 * math.pi * k / 20
+            p = R @ np.array([0.66 * s * math.cos(a), 0.66 * s * math.sin(a), 0], np.float32)
+            out.append(Prim("sphere", c + p, R, 0.14 * s, color, gloss=0.85))
+        handle = R @ np.array([0.86 * s, -0.86 * s, 0], np.float32)
+        out.append(Prim("cyl", c + handle, rot(yaw + 0.78, pitch), 0.18 * s, second, h=1.4, gloss=0.75))
+    elif shape == "rocket":
+        out.extend([Prim("cyl", c, R, 0.42 * s, color, h=1.45, gloss=0.8),
+                    Prim("sphere", c + R @ np.array([0, 1.45 * s, 0], np.float32), R, 0.44 * s, second, gloss=0.8),
+                    Prim("sphere", c + R @ np.array([0, 0.18 * s, -0.4 * s], np.float32), R, 0.22 * s, (0.55, 0.9, 1.0), gloss=0.9),
+                    Prim("cyl", c + R @ np.array([0, -1.35 * s, 0], np.float32), R, 0.24 * s, (1.0, 0.42, 0.08), h=0.8, gloss=0.4)])
+        for side in (-1, 1):
+            out.append(Prim("box", c + R @ np.array([side * 0.48 * s, -0.85 * s, 0], np.float32), R, 0.26 * s, second, half=(0.65, 0.8, 0.24), gloss=0.6))
+    elif shape == "gear":
+        for k in range(12):
+            a = 2 * math.pi * k / 12 + t * 0.55 * sp
+            p = R @ np.array([0.88 * s * math.cos(a), 0.88 * s * math.sin(a), 0], np.float32)
+            out.append(Prim("box", c + p, rot(a + yaw, pitch), 0.25 * s, color, half=(0.5, 0.42, 0.42), gloss=0.7))
+        out.extend([Prim("cyl", c, R, 0.65 * s, second, h=0.3, gloss=0.9),
+                    Prim("cyl", c + R @ np.array([0, 0, -0.35 * s], np.float32), R, 0.23 * s, (0.05, 0.06, 0.12), h=0.3, gloss=0.8)])
+    elif shape == "hourglass":
+        for sy in (-1, 1):
+            out.append(Prim("sphere", c + R @ np.array([0, sy * 0.68 * s, 0], np.float32), R, 0.62 * s, color if sy > 0 else second, gloss=0.75))
+        for x in (-0.42, 0.42):
+            for z in (-0.36, 0.36):
+                out.append(Prim("cyl", c + R @ np.array([x * s, 0, z * s], np.float32), R, 0.07 * s, second, h=1.5, gloss=0.7))
+        for k in range(6):
+            y = -0.55 + 0.18 * k + 0.12 * math.sin(t * 2 + k)
+            out.append(Prim("sphere", c + R @ np.array([0.06 * s * math.sin(k), y * s, 0], np.float32), R, 0.09 * s, (1.0, 0.74, 0.2), gloss=0.5))
+    elif shape == "book":
+        out.extend([Prim("box", c + R @ np.array([-0.47 * s, 0, 0], np.float32), R, 0.68 * s, color, half=(0.68, 0.9, 0.13), gloss=0.45),
+                    Prim("box", c + R @ np.array([0.47 * s, 0, 0], np.float32), R, 0.68 * s, second, half=(0.68, 0.9, 0.13), gloss=0.45),
+                    Prim("box", c + R @ np.array([0, 0, 0.14 * s], np.float32), R, 0.72 * s, (0.94, 0.91, 0.8), half=(0.58, 0.82, 0.06), gloss=0.3)])
+        for y in (-0.5, -0.2, 0.1, 0.4):
+            out.append(Prim("box", c + R @ np.array([0.48 * s, y * s, -0.06 * s], np.float32), R, 0.6 * s, (0.92, 0.88, 0.75), half=(0.38, 0.018, 0.012), gloss=0.2))
+    elif shape == "cat":
+        out.extend([Prim("sphere", c + R @ np.array([0, -0.25 * s, 0], np.float32), R, 0.78 * s, color, gloss=0.65),
+                    Prim("sphere", c + R @ np.array([0, 0.62 * s, -0.12 * s], np.float32), R, 0.58 * s, color, gloss=0.65),
+                    Prim("sphere", c + R @ np.array([-0.28 * s, 1.06 * s, -0.12 * s], np.float32), R, 0.3 * s, second, gloss=0.75),
+                    Prim("sphere", c + R @ np.array([0.28 * s, 1.06 * s, -0.12 * s], np.float32), R, 0.3 * s, second, gloss=0.75),
+                    Prim("sphere", c + R @ np.array([-0.2 * s, 0.69 * s, -0.62 * s], np.float32), R, 0.075 * s, (0.05, 0.05, 0.08), gloss=0.9),
+                    Prim("sphere", c + R @ np.array([0.2 * s, 0.69 * s, -0.62 * s], np.float32), R, 0.075 * s, (0.05, 0.05, 0.08), gloss=0.9)])
+        tail = R @ np.array([0.65 * s * math.sin(t * 2 * sp), -0.15 * s, 0.2 * s], np.float32)
+        out.append(Prim("sphere", c + tail, R, 0.25 * s, color, gloss=0.6))
+    elif shape == "sphere":
         out.append(Prim("sphere", c, R, s, color, gloss=0.8))
     elif shape == "cube":
         out.append(Prim("box", c, R, s, color, half=(1, 1, 1), gloss=0.5))
