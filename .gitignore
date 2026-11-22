@@ -16,3 +16,4 @@ apps/web/e2e/.auth.json
 *.tsbuildinfo
 playwright-report/
 /secrets/
+dump.rdb
