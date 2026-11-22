@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { DateTime } from "luxon";
 import { Lightbulb, Wand2, Clapperboard } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "@/components/ui";
 import { apiFetch } from "@/lib/client";
@@ -18,7 +19,7 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
   const [subtitles, setSubtitles] = useState(true);
   const [soundDesign, setSoundDesign] = useState(true);
   const [platforms, setPlatforms] = useState<string[]>([]);
-  const [publishAt, setPublishAt] = useState("");
+  const [scheduleTimes, setScheduleTimes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   async function run(key: string, action: () => Promise<string>) {
@@ -46,7 +47,7 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
     for (const idea of chosen) {
       await apiFetch("/api/content/ideas", { method: "PATCH", json: { id: idea.id, topic: idea.topic } });
       const script = await apiFetch("/api/content/scripts", { method: "POST", json: { brandId, ideaId: idea.id, minSeconds, maxSeconds, language, subtitles } });
-      const video = await apiFetch("/api/videos/generate", { method: "POST", json: { brandId, scriptId: script.script.id, productionOptions: { minSeconds, maxSeconds, language, subtitles, soundDesign }, publishOptions: { platforms, scheduledAt: publishAt ? new Date(publishAt).toISOString() : undefined } } });
+      const video = await apiFetch("/api/videos/generate", { method: "POST", json: { brandId, scriptId: script.script.id, productionOptions: { minSeconds, maxSeconds, language, subtitles, soundDesign }, publishOptions: { platforms, scheduledAtByPlatform: Object.fromEntries(platforms.filter((platform) => scheduleTimes[platform]).map((platform) => [platform, DateTime.fromISO(scheduleTimes[platform], { zone: "Europe/Istanbul" }).toUTC().toISO() ?? ""])) } } });
       queued.push(video.video.id);
     }
     setSelected([]);
@@ -66,7 +67,7 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)}/>Altyazı ekle</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={soundDesign} onChange={(e) => setSoundDesign(e.target.checked)}/>Kodla üretilen atmosfer ve vuruş sesleri</label>
             <fieldset className="text-sm"><legend>Paylaşılacak mecralar</legend><div className="mt-1 flex flex-wrap gap-3">{[["INSTAGRAM","Instagram Reels"],["TIKTOK","TikTok"],["YOUTUBE","YouTube Shorts"],["FACEBOOK","Facebook Reels"]].map(([id,label]) => <label key={id} className="flex items-center gap-1"><input type="checkbox" checked={platforms.includes(id)} onChange={() => setPlatforms((v) => v.includes(id) ? v.filter((x) => x !== id) : [...v,id])}/>{label}</label>)}</div></fieldset>
-            <label className="text-sm">Paylaşım zamanı (boşsa üretim bittiğinde)<input aria-label="Paylaşım zamanı" type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} className="mt-1 w-full rounded-md border bg-background px-2 py-1.5"/></label>
+            <div className="space-y-2 text-sm"><p>Platform başına yayın zamanı (Türkiye saati). Boş bırakırsanız üretim bitince kuyruğa alınır.</p>{platforms.map((platform) => <label key={platform} className="block">{({ INSTAGRAM: "Instagram Reels", TIKTOK: "TikTok", YOUTUBE: "YouTube Shorts", FACEBOOK: "Facebook Reels" } as Record<string, string>)[platform]}<input aria-label={`${platform} yayın zamanı (Türkiye saati)`} type="datetime-local" value={scheduleTimes[platform] ?? ""} onChange={(e) => setScheduleTimes((times) => ({ ...times, [platform]: e.target.value }))} className="mt-1 w-full rounded-md border bg-background px-2 py-1.5"/></label>)}</div>
           </div>
           <Button disabled={!canGenerate || !!busy} onClick={() => run("ideas", makeIdeas)}><Lightbulb className="h-4 w-4" />{busy === "ideas" ? "Fikirler hazırlanıyor…" : "Fikirleri göster"}</Button>
         </CardContent>
