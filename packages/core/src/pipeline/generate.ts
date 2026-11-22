@@ -1,6 +1,7 @@
 import path from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { prisma, Prisma, type VideoStatus } from "../lib/db";
 import { env } from "../lib/env";
 import { logger } from "../lib/logger";
@@ -24,7 +25,7 @@ import { reportProgress, type ProgressStage } from "./progress";
 
 /** Yeni video kaydı oluşturur ve üretim kuyruğuna ekler. Limit ve bütçe önceden kontrol edilir. */
 function soundDesignScript(): string {
-  try { return path.resolve(process.cwd(), "packages/core/src/video/sound_design.py"); }
+  try { return fileURLToPath(new URL("../video/sound_design.py", import.meta.url)); }
   catch { return path.resolve(process.cwd(), "../../packages/core/src/video/sound_design.py"); }
 }
 
