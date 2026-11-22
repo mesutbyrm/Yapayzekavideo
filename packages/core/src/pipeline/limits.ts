@@ -18,15 +18,15 @@ export interface LimitStatus {
 }
 
 /** Günlük/aylık üretim limitleri (marka + sistem geneli) */
-export async function generationLimits(brandId: string, at = new Date()): Promise<LimitStatus> {
+export async function generationLimits(brandId: string, at = new Date(), trigger: "auto" | "manual" = "auto"): Promise<LimitStatus> {
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } });
   const day = dayRange(brand.timezone, at);
   const month = monthRange(brand.timezone, at);
   const [brandToday, brandMonth, globalToday, globalMonth] = await Promise.all([
-    prisma.video.count({ where: { brandId, createdAt: { gte: day.start, lte: day.end }, status: COUNTED } }),
-    prisma.video.count({ where: { brandId, createdAt: { gte: month.start, lte: month.end }, status: COUNTED } }),
-    prisma.video.count({ where: { createdAt: { gte: day.start, lte: day.end }, status: COUNTED } }),
-    prisma.video.count({ where: { createdAt: { gte: month.start, lte: month.end }, status: COUNTED } }),
+    prisma.video.count({ where: { brandId, trigger: "auto", createdAt: { gte: day.start, lte: day.end }, status: COUNTED } }),
+    prisma.video.count({ where: { brandId, trigger: "auto", createdAt: { gte: month.start, lte: month.end }, status: COUNTED } }),
+    prisma.video.count({ where: { trigger: "auto", createdAt: { gte: day.start, lte: day.end }, status: COUNTED } }),
+    prisma.video.count({ where: { trigger: "auto", createdAt: { gte: month.start, lte: month.end }, status: COUNTED } }),
   ]);
   const globalDailyLimit = Number(await getSetting("generation.globalDailyLimit"));
   const globalMonthlyLimit = Number(await getSetting("generation.globalMonthlyLimit"));
@@ -43,6 +43,7 @@ export async function generationLimits(brandId: string, at = new Date()): Promis
   };
   if (!(await getSetting("generation.enabled"))) return { ...s, allowed: false, reason: "Üretim sistem ayarlarından durduruldu" };
   if (!brand.isActive) return { ...s, allowed: false, reason: "Marka pasif" };
+  if (trigger === "manual") return s;
   if (brandToday >= brand.dailyVideoTarget) return { ...s, allowed: false, reason: `Marka günlük limiti doldu (${brandToday}/${brand.dailyVideoTarget})` };
   if (brandMonth >= brand.monthlyVideoTarget) return { ...s, allowed: false, reason: `Marka aylık limiti doldu (${brandMonth}/${brand.monthlyVideoTarget})` };
   if (globalToday >= globalDailyLimit) return { ...s, allowed: false, reason: `Sistem günlük limiti doldu (${globalToday}/${globalDailyLimit})` };
