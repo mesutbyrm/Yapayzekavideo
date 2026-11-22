@@ -43,14 +43,21 @@ const TRANSITIONS = ["fade", "smoothleft", "smoothup", "circleopen", "slideleft"
 
 const hex = (c: string) => "0x" + c.replace("#", "");
 
-const MOTION_ART_SCRIPT = fileURLToPath(new URL("./motion_art.py", import.meta.url));
+/** motion_art.py yolu tembel çözülür: Next.js derlemesi import.meta.url'i dosya URL'si olarak vermez */
+function motionArtScript(): string {
+  try {
+    return fileURLToPath(new URL("./motion_art.py", import.meta.url));
+  } catch {
+    return path.resolve(process.cwd(), "../../packages/core/src/video/motion_art.py");
+  }
+}
 
 /**
  * Sahne görselini kodla çizer (motion_art.py, Pillow): marka renkleri + sahne açıklamasına göre figür.
  * Python/Pillow yoksa veya hata verirse null döner; çağıran gradyan arka plana düşer.
  */
 export async function renderMotionArt(opts: { out: string; description: string; brand: RenderInput["brand"]; index: number }): Promise<string | null> {
-  const args = [MOTION_ART_SCRIPT, "--out", opts.out, "--description", opts.description.slice(0, 500), "--primary", opts.brand.primaryColor, "--secondary", opts.brand.secondaryColor, "--accent", opts.brand.accentColor, "--index", String(opts.index)];
+  const args = [motionArtScript(), "--out", opts.out, "--description", opts.description.slice(0, 500), "--primary", opts.brand.primaryColor, "--secondary", opts.brand.secondaryColor, "--accent", opts.brand.accentColor, "--index", String(opts.index)];
   try {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(env().MOTION_ART_PYTHON, args, { stdio: ["ignore", "ignore", "pipe"] });
