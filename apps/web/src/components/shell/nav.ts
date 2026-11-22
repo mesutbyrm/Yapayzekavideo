@@ -3,7 +3,8 @@ import {
 } from "lucide-react";
 
 export const NAV = [
-  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },\n  { href: "/social", key: "social", icon: PanelsTopLeft },
+  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
+  { href: "/social", key: "social", icon: PanelsTopLeft },
   { href: "/generate", key: "generate", icon: Clapperboard },
   { href: "/automation", key: "automation", icon: Bot },
   { href: "/calendar", key: "calendar", icon: CalendarDays },
