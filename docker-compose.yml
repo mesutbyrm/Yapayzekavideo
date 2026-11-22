@@ -111,7 +111,7 @@ services:
       redis: { condition: service_healthy }
 
   nginx:
-    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    image: ${NGINX_IMAGE:-nginx:1.27.5-alpine}
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:
