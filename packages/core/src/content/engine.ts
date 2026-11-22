@@ -29,7 +29,7 @@ export async function generateIdeas(brandId: string, count = 5, topic = "") {
   for (let attempt = 1; attempt <= 2; attempt++) {
     const res = await chatJson({
       system: IDEAS_SYSTEM,
-      user: attempt === 1 ? baseUserPrompt : baseUserPrompt + "\\n\\nÖNCEKİ JSON ŞEMADAN GEÇMEDİ. Sorunlar: " + validationIssues.join("; ") + ". Her elemanda topic, angle, category, why_now alanlarının hepsini metin olarak ver. Sadece istenen JSON nesnesini döndür.",
+      user: attempt === 1 ? baseUserPrompt : baseUserPrompt + "\n\nÖNCEKİ JSON ŞEMADAN GEÇMEDİ. Sorunlar: " + validationIssues.join("; ") + ". Her elemanda topic, angle, category, why_now alanlarının hepsini metin olarak ver. Sadece istenen JSON nesnesini döndür.",
       brandId,
       operation: "content.ideas",
       schemaName: "ideas",
