@@ -70,6 +70,25 @@ async function platformsForSlot(brandId: string, slot: Date | null): Promise<Pla
   return s?.platforms?.length ? s.platforms : all;
 }
 
+/** Gelecekteki tekil hedef işini (hesap/platform) yeniden planlar. */
+export async function reschedulePublishJob(publishJobId: string, userId: string, scheduledAt: Date) {
+  if (!(scheduledAt instanceof Date) || !Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+    throw new AppError("Yayın saati gelecekte olmalı", "INVALID_SCHEDULE", 400);
+  }
+  const job = await prisma.publishJob.findUniqueOrThrow({ where: { id: publishJobId } });
+  if (!["SCHEDULED", "AWAITING_CONSENT"].includes(job.status)) {
+    throw new AppError("Yalnızca zamanlanmış veya TikTok onayı bekleyen yayın düzenlenebilir", "INVALID_STATE", 409);
+  }
+  if (job.status === "SCHEDULED") {
+    // İş BullMQ'da çalışmaya başladıysa remove hata verir ve plan veritabanında değiştirilmez.
+    await queue(QUEUE.publish(job.platform)).remove(`pub-${job.id}`);
+  }
+  const updated = await prisma.publishJob.update({ where: { id: job.id }, data: { scheduledAt } });
+  if (updated.status === "SCHEDULED") await enqueuePublish(updated);
+  await audit({ action: "publish.reschedule", userId, brandId: job.brandId, entity: "PublishJob", entityId: job.id, metadata: { scheduledAt: scheduledAt.toISOString(), platform: job.platform } });
+  return updated;
+}
+
 export async function enqueuePublish(job: Pick<PublishJob, "id" | "platform" | "scheduledAt">) {
   const delay = Math.max(0, job.scheduledAt.getTime() - Date.now());
   await queue(QUEUE.publish(job.platform)).add(
