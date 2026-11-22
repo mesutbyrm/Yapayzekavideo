@@ -1,9 +1,9 @@
 import {
-  LayoutDashboard, Clapperboard, Bot, CalendarDays, Library, ListOrdered, History, Share2, Building2, Tags, BarChart3, Wallet, Plug, Bell, Settings,
+  LayoutDashboard, Clapperboard, Bot, CalendarDays, Library, ListOrdered, History, Share2, Building2, Tags, BarChart3, Wallet, Plug, Bell, Settings, PanelsTopLeft,
 } from "lucide-react";
 
 export const NAV = [
-  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },\n  { href: "/social", key: "social", icon: PanelsTopLeft },
   { href: "/generate", key: "generate", icon: Clapperboard },
   { href: "/automation", key: "automation", icon: Bot },
   { href: "/calendar", key: "calendar", icon: CalendarDays },
