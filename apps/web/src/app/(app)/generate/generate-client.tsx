@@ -93,8 +93,8 @@ export function GenerateClient({ brandId, ideas: initialIdeas, canGenerate }: { 
       <Card className="lg:col-span-2">
         <CardHeader><CardTitle>Kendi fikrini doğrudan videoya çevir</CardTitle><CardDescription>Fikrinizi veya sahne talimatlarınızı yazın. Sistem bunu değiştirmeden ana brif olarak kullanıp senaryo, seslendirme, altyazı ve videoyu hazırlar.</CardDescription></CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <textarea aria-label="Kendi video fikrin" placeholder="Örn. İstanbul’da gece yürüyen bir kuryenin kapısına gelen gizemli paketi açınca şehrin 100 yıl sonraki hâlini görmesini anlat. Merak uyandıran, hafif komik ve finalde şaşırtıcı bir bilgi ver." value={customBrief} onChange={(e) => setCustomBrief(e.target.value)} maxLength={3000} rows={5} className="w-full rounded-md border bg-background px-3 py-2 text-sm" />
-          <p className="text-xs text-muted-foreground">Fikrin ana konusu, istediğiniz ton ve özel ayrıntılar senaryo brifi olarak korunur. En fazla 3000 karakter.</p>
+          <textarea aria-label="Kendi video fikrin" placeholder="Örn. İstanbul’da gece yürüyen bir kuryenin kapısına gelen gizemli paketi açınca şehrin 100 yıl sonraki hâlini görmesini anlat. Merak uyandıran, hafif komik ve finalde şaşırtıcı bir bilgi ver." value={customBrief} onChange={(e) => setCustomBrief(e.target.value)} maxLength={20000} rows={5} className="w-full rounded-md border bg-background px-3 py-2 text-sm" />
+          <p className="text-xs text-muted-foreground">Fikrin ana konusu, istediğiniz ton ve özel ayrıntılar senaryo brifi olarak korunur. En fazla 20.000 karakter.</p>
           <Button size="lg" disabled={!canGenerate || customBrief.trim().length < 5 || !!busy} onClick={() => run("custom-brief", produceCustomBrief)}><Clapperboard className="h-4 w-4" />{busy === "custom-brief" ? "Özel fikriniz hazırlanıyor…" : "Bu fikirle videoyu üret"}</Button>
         </CardContent>
       </Card>
