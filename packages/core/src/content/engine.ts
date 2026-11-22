@@ -94,7 +94,7 @@ export async function pickIdea(brandId: string) {
  * Senaryo üretimi: JSON şema doğrulama + süre kontrolü + tekrar kontrolü + güvenlik.
  * Hatalı çıktıda hatalar modele geri bildirilerek en fazla 3 kez kontrollü yeniden üretim yapılır.
  */
-export async function generateScript(brandId: string, ideaId: string, videoId?: string | null, opts?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean; brief?: string }) {
+export async function generateScript(brandId: string, ideaId: string, videoId?: string | null, opts?: { minSeconds?: number; maxSeconds?: number; videoFormat?: "portrait" | "landscape"; language?: string; subtitles?: boolean; brief?: string }) {
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } });
   const idea = await prisma.contentIdea.findUniqueOrThrow({ where: { id: ideaId } });
   if (idea.brandId !== brandId) throw new AppError("Fikir bu markaya ait değil", "FORBIDDEN", 403);
@@ -115,14 +115,15 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
   for (let attempt = 1; attempt <= MAX_SCRIPT_ATTEMPTS; attempt++) {
     try {
       const res = await chatJson<unknown>({
-        system: scriptSystem(minSeconds, maxSeconds, languageName),
+        system: scriptSystem(minSeconds, maxSeconds, languageName, opts?.videoFormat),
         user: scriptUser(ctx, idea.topic, idea.angle, feedback, opts?.brief) + "\nWrite the title, hook, narration, subtitles, CTA, and metadata entirely in " + languageName + ".",
         brandId,
         videoId,
         operation: "content.script",
         schemaName: "video_script",
         jsonSchema: scriptJsonSchema as any,
-        maxOutputTokens: 4000,
+        maxOutputTokens: Math.min(20_000, Math.max(4_000, Math.ceil(maxSeconds * 26))),
+        timeoutMs: maxSeconds > 180 ? 300_000 : 90_000,
       });
       const parsed = scriptSchema.safeParse(normalizeScript(res.data));
       if (!parsed.success) {
@@ -131,7 +132,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
         continue;
       }
       const script = parsed.data;
-      const visualIssues = validateMotionGraphics(script);
+      const visualIssues = validateMotionGraphics(script, minSeconds, maxSeconds);
       if (visualIssues.length) {
         feedback = visualIssues;
         lastErr = new ProviderError("3D sahne tasarımı yetersiz", "openai", "SCRIPT_VISUAL_QUALITY", true);
@@ -166,7 +167,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
           cta: script.cta,
           hashtags: mergeHashtags(script.hashtags, brand.hashtags),
           platformMetadata: script.platform_metadata as any,
-          raw: { ...(res.data as any), productionOptions: { minSeconds, maxSeconds, language, subtitles: opts?.subtitles ?? true } },
+          raw: { ...(res.data as any), productionOptions: { minSeconds, maxSeconds, videoFormat: opts?.videoFormat ?? "portrait", language, subtitles: opts?.subtitles ?? true } },
           model: res.model,
           attempts: attempt,
           safetyFlags: safety.flags,
@@ -195,9 +196,10 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
 }
 
 /** Yeni videolarda anlamlı ve çeşitli motion graphics sahnelerini zorunlu tutar. */
-function validateMotionGraphics(script: VideoScriptJson): string[] {
+function validateMotionGraphics(script: VideoScriptJson, minSeconds: number, maxSeconds: number): string[] {
   const errors: string[] = [];
-  if (script.scenes.length < 5) errors.push("Yaklaşık 60 saniye için en az 5 ayrı sahne üret; her sahnede yeni bilgi veya görsel olay olsun.");
+  const requiredScenes = maxSeconds <= 90 ? 5 : Math.max(6, Math.ceil(minSeconds / 20));
+  if (script.scenes.length < requiredScenes) errors.push(`${minSeconds}-${maxSeconds} saniyelik video için en az ${requiredScenes} ayrı sahne üret; uzun videolarda her sahnede yeni bilgi veya görsel olay olsun.`);
   const missing = script.scenes.map((scene, i) => scene.scene_3d?.objects?.length ? -1 : i + 1).filter((i) => i > 0);
   if (missing.length) errors.push(`scene_3d eksik sahneler: ${missing.join(", ")}. Her sahneye konuya uygun ana figür ve hareket ekle.`);
   if (script.scenes.some((scene) => (scene.scene_3d?.objects?.length ?? 0) > 3)) errors.push("Her 3D sahnede en fazla 3 anlamlı nesne kullan; dekoratif şekillerle doldurma.");
