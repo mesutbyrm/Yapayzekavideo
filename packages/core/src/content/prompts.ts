@@ -39,10 +39,10 @@ export function scriptSystem(minSec: number, maxSec: number, language = "Turkish
     .replace("{MAXW}", String(Math.round(maxSec * 2.4)));
 }
 
-export function scriptUser(ctx: string, topic: string, angle: string | null | undefined, feedback?: string[]) {
-  return `${ctx}
-
-Konu: ${topic}
-${angle ? `Açı: ${angle}` : ""}
-${feedback?.length ? `\nÖNCEKİ DENEMEDEKİ HATALAR (bunları düzelt):\n- ${feedback.join("\n- ")}` : ""}`;
+export function scriptUser(ctx: string, topic: string, angle: string | null | undefined, feedback?: string[], customBrief?: string) {
+  const parts = [ctx, "Konu: " + topic];
+  if (angle && angle !== customBrief) parts.push("Açı: " + angle);
+  if (customBrief) parts.push("KULLANICININ ÖZEL VİDEO FİKRİ / TALİMATI:\n" + customBrief + "\n\nBu brifin ana fikrini, istediği tonu, örnekleri ve özel ayrıntıları koru. Konuyu başka bir başlıkla değiştirme; profesyonel, merak uyandıran bir senaryo ve sahne planına dönüştür. Marka kuralları ve güvenlik gereklilikleri geçerlidir.");
+  if (feedback?.length) parts.push("ÖNCEKİ DENEMEDEKİ HATALAR (bunları düzelt):\n- " + feedback.join("\n- "));
+  return parts.join("\n\n");
 }
