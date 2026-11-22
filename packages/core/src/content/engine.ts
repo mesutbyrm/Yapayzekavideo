@@ -106,6 +106,12 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
         continue;
       }
       const script = parsed.data;
+      const visualIssues = validateMotionGraphics(script);
+      if (visualIssues.length) {
+        feedback = visualIssues;
+        lastErr = new ProviderError("3D sahne tasarımı yetersiz", "openai", "SCRIPT_VISUAL_QUALITY", true);
+        continue;
+      }
       const timing = validateTiming(script, minSeconds, maxSeconds);
       if (timing.length) {
         feedback = timing;
@@ -161,6 +167,18 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
   }
   await prisma.contentIdea.update({ where: { id: ideaId }, data: { status: "REJECTED" } });
   throw lastErr instanceof Error ? lastErr : new AppError("Senaryo üretilemedi", "SCRIPT_FAILED");
+}
+
+/** Yeni videolarda anlamlı ve çeşitli motion graphics sahnelerini zorunlu tutar. */
+function validateMotionGraphics(script: VideoScriptJson): string[] {
+  const errors: string[] = [];
+  if (script.scenes.length < 5) errors.push("Yaklaşık 60 saniye için en az 5 ayrı sahne üret; her sahnede yeni bilgi veya görsel olay olsun.");
+  const missing = script.scenes.map((scene, i) => scene.scene_3d?.objects?.length ? -1 : i + 1).filter((i) => i > 0);
+  if (missing.length) errors.push(`scene_3d eksik sahneler: ${missing.join(", ")}. Her sahneye konuya uygun ana figür ve hareket ekle.`);
+  if (script.scenes.some((scene) => (scene.scene_3d?.objects?.length ?? 0) > 3)) errors.push("Her 3D sahnede en fazla 3 anlamlı nesne kullan; dekoratif şekillerle doldurma.");
+  const shapes = new Set(script.scenes.flatMap((scene) => scene.scene_3d?.objects?.map((object) => object.shape) ?? []));
+  if (shapes.size < Math.min(4, script.scenes.length)) errors.push("3D ana figürler ve kompozisyonlar sahneler arasında daha fazla çeşitlenmeli.");
+  return errors;
 }
 
 /** Model çıktısındaki küçük biçim farklarını düzeltir (ör. # eksik hashtag) */
