@@ -23,7 +23,7 @@ export function requiresConsent(platform: Platform) {
  * Bir video için markanın bağlı her hesabına ayrı yayın işi oluşturur.
  * idempotencyKey = videoId:socialAccountId → aynı video aynı hesaba ikinci kez gönderilmez.
  */
-export async function createPublishJobs(videoId: string, opts: { platforms?: Platform[]; scheduledAt?: Date } = {}) {
+export async function createPublishJobs(videoId: string, opts: { platforms?: Platform[]; scheduledAt?: Date; scheduledAtByPlatform?: Partial<Record<Platform, Date>> } = {}) {
   const video = await prisma.video.findUniqueOrThrow({ where: { id: videoId } });
   if (video.status !== "READY" && video.status !== "PARTIALLY_PUBLISHED" && video.status !== "PUBLISHED" && video.status !== "PUBLISHING") {
     throw new AppError("Yalnızca kalite kontrolünden geçmiş videolar yayın kuyruğuna alınabilir", "NOT_READY", 409);
@@ -44,7 +44,7 @@ export async function createPublishJobs(videoId: string, opts: { platforms?: Pla
           videoId,
           socialAccountId: acc.id,
           platform: acc.platform,
-          scheduledAt: when,
+          scheduledAt: opts.scheduledAtByPlatform?.[acc.platform] ?? when,
           idempotencyKey: key,
           status: requiresConsent(acc.platform) ? "AWAITING_CONSENT" : "SCHEDULED",
         },
