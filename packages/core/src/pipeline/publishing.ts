@@ -31,7 +31,7 @@ export async function createPublishJobs(videoId: string, opts: { platforms?: Pla
   if (!video.qcPassed) throw new AppError("Video kalite kontrolünden geçmedi", "QC_FAILED", 409);
   const slotPlatforms = await platformsForSlot(video.brandId, video.scheduleSlot);
   const accounts = await prisma.socialAccount.findMany({
-    where: { brandId: video.brandId, status: "CONNECTED", autoPublish: true, platform: { in: opts.platforms ?? slotPlatforms } },
+    where: { brandId: video.brandId, status: "CONNECTED", ...(opts.platforms?.length ? {} : { autoPublish: true }), platform: { in: opts.platforms ?? slotPlatforms } },
   });
   const when = opts.scheduledAt ?? (video.scheduleSlot && video.scheduleSlot > new Date() ? video.scheduleSlot : new Date());
   const jobs: PublishJob[] = [];
