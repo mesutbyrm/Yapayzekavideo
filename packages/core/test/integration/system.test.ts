@@ -49,7 +49,7 @@ describe("bütçe kontrolü", () => {
 });
 
 describe("üretim limitleri", () => {
-  it("marka günlük hedefi (3) dolunca yeni üretim reddedilir; başarısız videolar sayılmaz", async () => {
+  it("marka günlük otomatik hedefi (3) dolunca otomatik üretim reddedilir; manuel üretim limitsizdir", async () => {
     const brand = await makeBrand({ dailyVideoTarget: 3 });
     for (let i = 0; i < 2; i++) await makeVideo(brand.id);
     await makeVideo(brand.id, { status: "FAILED" });
@@ -58,7 +58,9 @@ describe("üretim limitleri", () => {
     const l = await generationLimits(brand.id);
     expect(l.allowed).toBe(false);
     expect(l.reason).toMatch(/günlük limiti/);
-    await expect(enqueueGeneration(brand.id, { trigger: "manual" })).rejects.toMatchObject({ code: "LIMIT_REACHED" });
+    await expect(enqueueGeneration(brand.id, { trigger: "auto" })).rejects.toMatchObject({ code: "LIMIT_REACHED" });
+    await expect(enqueueGeneration(brand.id, { trigger: "manual" })).resolves.toMatchObject({ trigger: "manual" });
+    expect(await prisma.video.count({ where: { brandId: brand.id } })).toBe(5);
   });
   it("sistem geneli limit tüm markaları kapsar", async () => {
     await setSetting("generation.globalDailyLimit", 1);

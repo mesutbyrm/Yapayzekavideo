@@ -19,8 +19,9 @@ export const POST = api(async ({ json, brand, user, ip }) => {
     const qc = await runQualityCheck({
       filePath: file,
       minDurationSec: v.brand.minDurationSec,
-      maxDurationSec: v.brand.maxDurationSec,
-      maxSizeMb: Number(await getSetting("video.maxSizeMb")),
+      maxDurationSec: Number(manifest.production?.maxSeconds ?? v.brand.maxDurationSec),
+      videoFormat: manifest.production?.videoFormat ?? "portrait",
+      maxSizeMb: manifest.production?.videoFormat === "landscape" || Number(manifest.production?.maxSeconds ?? 0) > 180 ? 1000 : Number(await getSetting("video.maxSizeMb")),
       captionsCount: Number(manifest.captions ?? 0),
       media: manifest.scenes ?? [],
       contentBlocking: [],

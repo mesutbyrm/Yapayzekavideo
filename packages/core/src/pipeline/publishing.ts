@@ -23,7 +23,7 @@ export function requiresConsent(platform: Platform) {
  * Bir video için markanın bağlı her hesabına ayrı yayın işi oluşturur.
  * idempotencyKey = videoId:socialAccountId → aynı video aynı hesaba ikinci kez gönderilmez.
  */
-export async function createPublishJobs(videoId: string, opts: { platforms?: Platform[]; scheduledAt?: Date } = {}) {
+export async function createPublishJobs(videoId: string, opts: { platforms?: Platform[]; scheduledAt?: Date; scheduledAtByPlatform?: Partial<Record<Platform, Date>> } = {}) {
   const video = await prisma.video.findUniqueOrThrow({ where: { id: videoId } });
   if (video.status !== "READY" && video.status !== "PARTIALLY_PUBLISHED" && video.status !== "PUBLISHED" && video.status !== "PUBLISHING") {
     throw new AppError("Yalnızca kalite kontrolünden geçmiş videolar yayın kuyruğuna alınabilir", "NOT_READY", 409);
@@ -31,7 +31,7 @@ export async function createPublishJobs(videoId: string, opts: { platforms?: Pla
   if (!video.qcPassed) throw new AppError("Video kalite kontrolünden geçmedi", "QC_FAILED", 409);
   const slotPlatforms = await platformsForSlot(video.brandId, video.scheduleSlot);
   const accounts = await prisma.socialAccount.findMany({
-    where: { brandId: video.brandId, status: "CONNECTED", autoPublish: true, platform: { in: opts.platforms ?? slotPlatforms } },
+    where: { brandId: video.brandId, status: "CONNECTED", ...(opts.platforms?.length ? {} : { autoPublish: true }), platform: { in: opts.platforms ?? slotPlatforms } },
   });
   const when = opts.scheduledAt ?? (video.scheduleSlot && video.scheduleSlot > new Date() ? video.scheduleSlot : new Date());
   const jobs: PublishJob[] = [];
@@ -44,7 +44,7 @@ export async function createPublishJobs(videoId: string, opts: { platforms?: Pla
           videoId,
           socialAccountId: acc.id,
           platform: acc.platform,
-          scheduledAt: when,
+          scheduledAt: opts.scheduledAtByPlatform?.[acc.platform] ?? when,
           idempotencyKey: key,
           status: requiresConsent(acc.platform) ? "AWAITING_CONSENT" : "SCHEDULED",
         },
@@ -68,6 +68,25 @@ async function platformsForSlot(brandId: string, slot: Date | null): Promise<Pla
   const hhmm = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: brand?.timezone ?? "Europe/Istanbul" }).format(slot);
   const s = await prisma.schedule.findUnique({ where: { brandId_time: { brandId, time: hhmm } } });
   return s?.platforms?.length ? s.platforms : all;
+}
+
+/** Gelecekteki tekil hedef işini (hesap/platform) yeniden planlar. */
+export async function reschedulePublishJob(publishJobId: string, userId: string, scheduledAt: Date) {
+  if (!(scheduledAt instanceof Date) || !Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+    throw new AppError("Yayın saati gelecekte olmalı", "INVALID_SCHEDULE", 400);
+  }
+  const job = await prisma.publishJob.findUniqueOrThrow({ where: { id: publishJobId } });
+  if (!["SCHEDULED", "AWAITING_CONSENT"].includes(job.status)) {
+    throw new AppError("Yalnızca zamanlanmış veya TikTok onayı bekleyen yayın düzenlenebilir", "INVALID_STATE", 409);
+  }
+  if (job.status === "SCHEDULED") {
+    // İş BullMQ'da çalışmaya başladıysa remove hata verir ve plan veritabanında değiştirilmez.
+    await queue(QUEUE.publish(job.platform)).remove(`pub-${job.id}`);
+  }
+  const updated = await prisma.publishJob.update({ where: { id: job.id }, data: { scheduledAt } });
+  if (updated.status === "SCHEDULED") await enqueuePublish(updated);
+  await audit({ action: "publish.reschedule", userId, brandId: job.brandId, entity: "PublishJob", entityId: job.id, metadata: { scheduledAt: scheduledAt.toISOString(), platform: job.platform } });
+  return updated;
 }
 
 export async function enqueuePublish(job: Pick<PublishJob, "id" | "platform" | "scheduledAt">) {

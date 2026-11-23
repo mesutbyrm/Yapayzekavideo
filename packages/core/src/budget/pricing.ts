@@ -19,8 +19,8 @@ export function storageCostPerMonth(bytes: number) {
 }
 
 /** Bir video için tahmini ücretli maliyet (bütçe ön kontrolü) */
-export function estimateVideoCost(opts: { narrationChars?: number; aiImages?: number } = {}) {
-  const llm = openAiCost(4000, 2500) * 2; // fikir + senaryo (+ olası yeniden deneme)
+export function estimateVideoCost(opts: { narrationChars?: number; aiImages?: number; inputTokens?: number; outputTokens?: number } = {}) {
+  const llm = openAiCost(opts.inputTokens ?? 4000, opts.outputTokens ?? 2500) * 2; // fikir + senaryo (+ olası yeniden deneme)
   const tts = ttsCost(opts.narrationChars ?? 600);
   const img = (opts.aiImages ?? 0) * env().AI_IMAGE_PRICE_USD;
   return llm + tts + img;

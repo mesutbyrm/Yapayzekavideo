@@ -15,66 +15,51 @@ export function brandContext(brand: Brand, categories: ContentCategory[]) {
     .join("\n");
 }
 
-export const IDEAS_SYSTEM = `Sen Türkçe kısa dikey video (Reels/Shorts/TikTok) için içerik stratejistisin.
-Kurallar:
-- Yalnızca doğrulanabilir, genel kabul görmüş bilgilere dayanan konular öner.
-- Tıbbi, finansal veya hukuki kesin vaat içeren konu önerme.
-- Telifli eserlerin (şarkı sözü, film sahnesi, kitap bölümü) aktarımına dayanan konu önerme.
-- Siyasi propaganda, nefret, şiddet, yetişkin içerik, tehlikeli meydan okumalar yasak.
-- Daha önce kullanılan konuları ve onlara çok benzeyenleri tekrar etme.
-- Çıktı yalnızca JSON: {"ideas":[{"topic","angle","category","why_now"}]}`;
+export const IDEAS_SYSTEM = "Sen profesyonel sosyal medya ve YouTube videoları için yaratıcı yönetmen ve konu araştırmacısısın.\nHer fikir ilk saniyede soru uyandırmalı ve sonunda net bir bilgi, şaşırtıcı açıklama veya komik karşılık vermeli.\nKurallar:\n- Kullanıcı başlık verdiyse bütün fikirler yalnızca o başlığın içinde kalsın; ilişkili ama başka konulara sapma.\n- Verilen konunun kendisine bağlı farklı anlatım açıları üret: merak, doğrulanabilir bilgi, konuya uygunsa mizah ve güçlü görsel anlatım.\n- Kullanıcının konusuna uymayan gündemi, marka/kişi isimlerini ve genel trendleri ekleme.\n- Viral olma garantisi verme; güçlü açılış, izleyici tutma ve paylaşılabilir bilgi/şaka kur.\n- Bilinmeyen trend, istatistik veya güncel olay uydurma. Bilgi gerektiren iddialar doğrulanabilir ve ölçülü olsun.\n- Tıbbi, finansal veya hukuki kesin vaatlerden kaçın. Telifli eserlerden alıntı yapma.\n- Daha önce kullanılan veya çok benzeyen başlıkları tekrar etme.\n- angle: anlatım biçimi + açılış sorusu + sonda verilecek karşılık. why_now kısa ve gerçekçi olsun.\n- Yalnızca şu yapıda geçerli JSON döndür. ideas bir dizi; her eleman mutlaka topic, angle, category, why_now anahtarlarının tümünü taşısın ve hepsi metin olsun. topic 5-160, angle en çok 300, category en çok 80, why_now en çok 300 karakter olsun. Markdown/code fence, açıklama, null veya fazladan anahtar ekleme. Örnek: {\"ideas\":[{\"topic\":\"...\",\"angle\":\"...\",\"category\":\"...\",\"why_now\":\"...\"}]}";
 
 export function ideasUser(ctx: string, count: number, usedTopics: string[], performanceHints: string[], topic = "") {
   return `${ctx}
 
-${topic ? `Kullanıcının özellikle istediği konu: ${topic}. Fikirlerin tamamı bu konuya odaklansın.
-` : ""}${count} adet yeni video fikri üret. Her fikir 20-30 saniyede anlatılabilecek kadar odaklı olsun.
-${performanceHints.length ? `Gerçek performans verilerine göre iyi çalışan konular/açılar:\n- ${performanceHints.join("\n- ")}\n` : ""}
+${topic ? `Kullanıcının verdiği başlık/konu: ${topic}. Her öneri doğrudan bu başlığın kendisiyle ilgili olsun; yan konu, alakasız gündem veya genel trend ekleme.
+` : ""}${count} adet yeni fikir üret. Her biri Türkçe, yaklaşık 60 saniyelik dikey anlatıya dönüşebilecek bir hikâye çekirdeği olsun. Kullanıcı başlığı verdiyse yalnızca o konunun özgün açılarını kullan; açılış sorusu ve sona taşıyacak karşılığı belli olsun. Mizahı konuya uygunsa kullan; trend veya viral olma vaadi uydurma.
+${performanceHints.length ? `Gerçek performans verilerine göre iyi çalışan konular/açılar${topic ? " (yalnızca kullanıcı başlığıyla doğrudan ilgiliyse dikkate al; konu dışı ipuçlarını yok say)" : ""}:
+- ${performanceHints.join("\n- ")}
+` : ""}
 Daha önce kullanılan konular (TEKRAR ETME):
-${usedTopics.length ? usedTopics.map((t) => `- ${t}`).join("\n") : "- (henüz yok)"}`;
+${usedTopics.length ? usedTopics.map((t) => `- ${t}`).join("\n") : "- (henüz yok)"}
+`;
 }
 
-export const SCRIPT_SYSTEM = `Sen Türkçe kısa dikey video senaristisin. Çıktı yalnızca geçerli JSON olmalı.
-Zorunlu kurallar:
-1. Toplam süre {MIN}-{MAX} saniye. Sahne süreleri (duration, saniye) toplamı bu aralıkta olmalı. 4-7 sahne kullan.
-2. "hook": ilk 2 saniyede söylenecek, merak uyandıran kısa cümle (en fazla 10 kelime). "narration" metni birebir bu hook ile BAŞLAMALI.
-3. "narration": seslendirilecek tam metin. Türkçe, akıcı, konuşma dili. Saniyede ~2.5 kelime hesapla ({MINW}-{MAXW} kelime).
-4. Son cümle doğal bir etkileşim çağrısı olmalı ve "cta" alanında da yer almalı.
-5. Her sahne için "visual_description" (Türkçe sahne tarifi), "search_keywords" (stok video araması için 2-4 İNGİLİZCE anahtar kelime, kişi/marka adı içermesin) ve "subtitle" (ekranda kısa metin, en fazla 8 kelime).
-6. Yalnızca doğrulanabilir genel bilgiler kullan. Emin olmadığın sayı/tarih/istatistik verme. Kesin sağlık/finans vaadi verme.
-7. Şarkı sözü, film repliği, telifli metin alıntısı KULLANMA. Gerçek kişileri karalama.
-8. "hashtags": 5-10 adet, # ile başlayan, boşluksuz, Türkçe karakter kullanılabilir. #kesfet gibi genel etiketlerin yanında konuya özel etiketler.
-9. "platform_metadata": instagram/facebook/tiktok/youtube için ayrı "title" (YouTube için en fazla 90 karakter, #Shorts ekle), "caption" (platform diline uygun, 1-3 cümle + hashtagler), "description", "hashtags".
-10. "fact_check_notes": metindeki iddiaların neden güvenilir olduğunu kısaca açıkla.
-11. "scene_3d": her sahne kodla çizilen hareketli bir 3D sahneye dönüşür. O sahnede ANLATILAN şeyi temsil eden 1-5 nesne seç; her sahne farklı olsun, aynı kompozisyonu tekrar etme.
-   - shape: sphere, cube, slab (kart/belge), pillar (kule/sütun), cylinder, coin (para), ring (halka/döngü), helix (DNA/bilim/gelişim), bar_chart (büyüme/istatistik), coin_stack (birikim/para), grid (veri/şehir/sistem), phone (uygulama/sosyal medya), planet (dünya/uzay/küresel).
-   - motion: spin, bob, orbit, pulse (kalp atışı/vurgu), bounce (enerji/neşe), float, none. camera: orbit, dolly (yaklaşma/odak), crane (yukarıdan iniş/açılış), static.
-   - color: #RRGGBB, konuya uygun (para=altın, doğa=yeşil, teknoloji=mavi/mor, tehlike=kırmızı).
-   - Konum: x -1.5..1.5 (sol/sağ), y -0.8..1.5 (yukarı), z -1.5..1.2 (derinlik); size 0.3..1.2. Nesneler birbirinin içine girmesin, ana nesne ortada ve büyük olsun.`;
+export const SCRIPT_SYSTEM = "Sen profesyonel video senaristi ve 3D motion graphics yönetmenisin. Yalnızca geçerli JSON döndür.\nHİKÂYE:\n1. Anlatı verilen başlığa doğrudan bağlı kalsın; başka konuya sapma.\n2. İlk 1-2 saniyede somut bir soru, şaşırtıcı çelişki veya komik gözlemle başla. Clickbait yapma; videoda söz verdiğin cevabı ver.\n3. Akış: hook → merak sorusu → kısa bağlam → 2-3 yeni bilgi/olay → şaşırtıcı açıklama veya komik payoff → doğal CTA. Kısa videoda her 5-8 saniyede, uzun videoda her sahnede yeni bilgi ya da görsel olay olsun; dolgu ve tekrar olmasın.\n4. Süre {MIN}-{MAX} saniye aralığında olmalı. {SCENE_RULE} Sahne sürelerinin toplamı aralığa eşit dağılsın.\n5. Narration canlı, konuşma dili Türkçe olsun. {MINW}-{MAXW} kelime hedefle (2.2-2.4 kelime/sn); nefes ve dramatik duraklamalara alan bırak.\n6. Tarzı konuya göre seç: bilgi, mizah veya merak/reveal. Mizahı zorlama; iddiaları ölçülü ve doğrulanabilir tut. Bilinmeyen tarih, sayı ve istatistik uydurma.\n7. hook ilk cümle olmalı ve narration birebir hook ile başlamalı; en fazla 12 kelime. Son cümle CTA ile aynı olmalı.\nGÖRSEL:\n8. Her sahne için Türkçe visual_description yaz: ne görünür, ana figür nasıl hareket eder, kamera nasıl ilerler, sonraki sahneye geçiş nasıl hazırlanır. Konuşma ve görüntü aynı şeyi anlatsın.\n9. Her sahneye en fazla 7 kelimelik Turkish subtitle ve görseli gerçekten tarif eden 2-4 İngilizce search_keywords ekle.\n10. scene_3d her sahnede zorunludur. 1-3 nesne seç; yalnızca şu şekilleri kullan: sphere, cube, slab, pillar, cylinder, coin, ring, helix, bar_chart, coin_stack, grid, phone, planet, brain, eye, lightbulb, magnifier, rocket, gear, hourglass, book, cat.\n11. 3D sahne dekoratif soyut şekillerden oluşmasın. Başlığın gerçek nesnesini/varlığını temsil eden anlamlı bir ana figür seç ve gerekirse ikinci figürle sebep-sonuç veya karşılaştırma göster. Örnek: kedi için cat/eye; bilim için brain/helix; keşif için magnifier; teknoloji için phone/gear; tarih/öğrenme için book; uzay için planet/rocket. Konuya uymuyorsa kullanma.\n12. Art arda sahnelerde aynı shape dizisini, kamerayı ve hareketi tekrarlama. Konuya uygun orbit/dolly/crane ve spin/bounce/pulse/float hareketi seç; yüksek kontrastlı marka renkleri kullan. Ana figür merkezde, altyazı alanından uzakta olsun.\n13. Bilgi vurgusunda pulse, komik payoff'ta bounce, açıklamada dolly/orbit gibi anlamlı hareket kullan. Görsel sahneler aynı hikâyenin devamı olsun.\nDİĞER:\n14. Altyazılar narration ile eşleşsin. 5-10 konuya özel hashtag yaz.\n15. platform_metadata içinde instagram/facebook/tiktok/youtube için title/caption/description/hashtags üret. YouTube başlığı en fazla 90 karakter olsun; yalnızca dikey kısa videolarda #Shorts ekle, uzun/yatay videolarda ekleme.\n16. Telifli eser alıntısı, karalama, nefret, şiddet veya tehlikeli meydan okuma üretme.";
 
 /** "shorts3d" şablonu: referans videolardaki (Yapay Zekâ Komedisi) anlatım ve görsel dil */
 export const SHORTS3D_RULES = `
 Şablon kuralları (shorts3d, eğlenceli "bunu biliyor muydunuz" dizisi):
-11. Anlatım: esprili, merak uyandıran, samimi konuşma dili; kısa cümleler. Hook şaşırtıcı bir soru ya da iddia olsun (ör. "Bu kaplumbağa yapay zekâya göre bir tüfek.").
-12. Gerçek olayı tarih, yer ve kim olduğuyla anlat (ör. "2017'de MIT'li araştırmacılar..."), sonra neden komik/ilginç olduğunu ve arkasındaki kavramı basitçe açıkla.
-13. Kapanış: izleyiciye bir soru sor ve "Yorumlara yazın!" ile bitir. "cta" bu son cümle olsun.
-14. Her sahne için "visual_description" İNGİLİZCE ve tek bir sevimli 3D karakter ya da nesne tarif etsin (ör. "a cute green toy turtle", "a friendly white robot with a screen face and glowing cyan eyes looking confused"). Gerçek kişi, marka logosu, yazı tarif etme.
-15. "label": sahnede ekranda kısa etiket gerekiyorsa en fazla 3 kelime (ör. "2017 · MIT", "TUZAK", "RÖNTGEN"); gerekmiyorsa boş string. Etiketleri sahnelerin yarısından azında kullan.
-16. "cover_title": açılış kapak başlığı, toplam en fazla 5 kelime, iki satır "|" ile ayrılır, ikinci satır vurucu olsun (ör. "BU BİR|TÜFEK Mİ?!").
-17. "highlight_words": anlatımda geçen 6-15 anahtar kelime (yazıldığı gibi: sayılar, yıllar, kilit isimler); altyazıda sarı yanar. "alert_words": 1-4 şok/olumsuz kelime (ör. "tüfek", "sahte"); kırmızı yanar.`;
+17. Anlatım: esprili, merak uyandıran, samimi konuşma dili; kısa cümleler. Hook şaşırtıcı bir soru ya da iddia olsun (ör. "Bu kaplumbağa yapay zekâya göre bir tüfek.").
+18. Gerçek olayı tarih, yer ve kim olduğuyla anlat (ör. "2017'de MIT'li araştırmacılar..."), sonra neden komik/ilginç olduğunu ve arkasındaki kavramı basitçe açıkla.
+19. Kapanış: izleyiciye bir soru sor ve "Yorumlara yazın!" ile bitir. "cta" bu son cümle olsun.
+20. 8. kuralın yerine: her sahne için "visual_description" İNGİLİZCE ve tek bir sevimli 3D karakter ya da nesne tarif etsin (ör. "a cute green toy turtle", "a friendly white robot with a screen face and glowing cyan eyes looking confused"). Gerçek kişi, marka logosu, yazı tarif etme.
+21. "label": sahnede ekranda kısa etiket gerekiyorsa en fazla 3 kelime (ör. "2017 · MIT", "TUZAK", "RÖNTGEN"); gerekmiyorsa boş string. Etiketleri sahnelerin yarısından azında kullan.
+22. "cover_title": açılış kapak başlığı, toplam en fazla 5 kelime, iki satır "|" ile ayrılır, ikinci satır vurucu olsun (ör. "BU BİR|TÜFEK Mİ?!").
+23. "highlight_words": anlatımda geçen 6-15 anahtar kelime (yazıldığı gibi: sayılar, yıllar, kilit isimler); altyazıda sarı yanar. "alert_words": 1-4 şok/olumsuz kelime (ör. "tüfek", "sahte"); kırmızı yanar.`;
 
-export function scriptSystem(minSec: number, maxSec: number, language = "Turkish", template?: string) {
-  const base = template === "shorts3d" ? SCRIPT_SYSTEM + SHORTS3D_RULES : SCRIPT_SYSTEM + `\n11. "label", "cover_title" boş string; "highlight_words" ve "alert_words" boş dizi olabilir.`;
+export function scriptSystem(minSec: number, maxSec: number, language = "Turkish", videoFormat: "portrait" | "landscape" = "portrait", template?: string) {
+  const base = template === "shorts3d" ? SCRIPT_SYSTEM + SHORTS3D_RULES : SCRIPT_SYSTEM + `\n17. "label", "cover_title" boş string; "highlight_words" ve "alert_words" boş dizi olabilir.`;
+  const sceneRule = maxSec <= 90
+    ? "60 saniyeye kadar videolarda 6-8 sahne kullan."
+    : `${Math.max(6, Math.ceil(minSec / 20))}-${Math.min(40, Math.max(6, Math.ceil(maxSec / 20)))} sahne kullan; uzun videolarda her sahne yaklaşık 15-30 saniye sürsün ve kendi içinde yeni görsel olaylar içersin.`;
+  const formatRule = videoFormat === "landscape" ? "Çıktı yatay 16:9 uzun video olarak tasarlansın." : "Çıktı dikey 9:16 video olarak tasarlansın.";
   return base.replaceAll("Türkçe", language).replace("{MIN}", String(minSec))
     .replace("{MAX}", String(maxSec))
     .replace("{MINW}", String(Math.round(minSec * 2.2)))
-    .replace("{MAXW}", String(Math.round(maxSec * 2.5)));
+    .replace("{MAXW}", String(Math.round(maxSec * 2.4)))
+    .replace("{SCENE_RULE}", sceneRule + " " + formatRule);
 }
 
-export function scriptUser(ctx: string, topic: string, angle: string | null | undefined, feedback?: string[]) {
-  return `${ctx}
-
-Konu: ${topic}
-${angle ? `Açı: ${angle}` : ""}
-${feedback?.length ? `\nÖNCEKİ DENEMEDEKİ HATALAR (bunları düzelt):\n- ${feedback.join("\n- ")}` : ""}`;
+export function scriptUser(ctx: string, topic: string, angle: string | null | undefined, feedback?: string[], customBrief?: string) {
+  const parts = [ctx, "Konu: " + topic];
+  if (angle && angle !== customBrief) parts.push("Açı: " + angle);
+  if (customBrief) parts.push("KULLANICININ ÖZEL VİDEO FİKRİ / TALİMATI:\n" + customBrief + "\n\nBu brifin ana fikrini, istediği tonu, örnekleri ve özel ayrıntıları koru. Konuyu başka bir başlıkla değiştirme; profesyonel, merak uyandıran bir senaryo ve sahne planına dönüştür. Marka kuralları ve güvenlik gereklilikleri geçerlidir.");
+  if (feedback?.length) parts.push("ÖNCEKİ DENEMEDEKİ HATALAR (bunları düzelt):\n- " + feedback.join("\n- "));
+  return parts.join("\n\n");
 }

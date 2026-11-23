@@ -55,7 +55,7 @@ describe("shorts3d stili", () => {
   it("şablona göre görsel ve senaryo talimatı", () => {
     expect(aiImagePrompt("a toy turtle", { template: "shorts3d", primaryColor: "#7C3AED" })).toMatch(/3D render.*#7C3AED/);
     expect(aiImagePrompt("a toy turtle")).toMatch(/photorealistic/);
-    expect(scriptSystem(50, 62, "Turkish", "shorts3d")).toContain("Yorumlara yazın!");
+    expect(scriptSystem(50, 62, "Turkish", "portrait", "shorts3d")).toContain("Yorumlara yazın!");
     expect(scriptSystem(20, 30)).not.toContain("Yorumlara yazın!");
   });
 });

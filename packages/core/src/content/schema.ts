@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SCENE3D_SHAPES = ["sphere", "cube", "slab", "pillar", "cylinder", "coin", "ring", "helix", "bar_chart", "coin_stack", "grid", "phone", "planet"] as const;
+export const SCENE3D_SHAPES = ["sphere", "cube", "slab", "pillar", "cylinder", "coin", "ring", "helix", "bar_chart", "coin_stack", "grid", "phone", "planet", "brain", "eye", "lightbulb", "magnifier", "rocket", "gear", "hourglass", "book", "cat"] as const;
 export const SCENE3D_MOTIONS = ["spin", "bob", "orbit", "pulse", "bounce", "float", "none"] as const;
 export const SCENE3D_CAMERAS = ["orbit", "dolly", "crane", "static"] as const;
 
@@ -25,7 +25,7 @@ export const scene3dSchema = z.object({
 export type Scene3d = z.infer<typeof scene3dSchema>;
 
 export const sceneSchema = z.object({
-  duration: z.number().min(1.5).max(12),
+  duration: z.number().min(1.5).max(30),
   visual_description: z.string().min(3).max(400),
   /** Stok medya araması için İngilizce anahtar kelimeler */
   search_keywords: z.array(z.string().min(2)).min(1).max(6).optional(),
@@ -49,8 +49,8 @@ const platformMeta = z
 export const scriptSchema = z.object({
   title: z.string().min(5).max(100),
   hook: z.string().min(5).max(200),
-  narration: z.string().min(60).max(900),
-  scenes: z.array(sceneSchema).min(3).max(10),
+  narration: z.string().min(60).max(18_000),
+  scenes: z.array(sceneSchema).min(3).max(40),
   cta: z.string().min(3).max(120),
   hashtags: z.array(z.string().regex(/^#[\p{L}\p{N}_]+$/u, "Hashtag # ile başlamalı ve boşluk içermemeli")).min(3).max(15),
   platform_metadata: z.object({

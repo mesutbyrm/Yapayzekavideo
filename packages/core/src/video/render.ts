@@ -39,6 +39,7 @@ export interface RenderInput {
     labels?: (string | null | undefined)[];
     outroSubtitle?: string | null;
   };
+  videoFormat?: "portrait" | "landscape";
   /** İlerleme bildirimi: fraction 0..1, detail kullanıcıya gösterilecek kısa açıklama */
   onProgress?: (fraction: number, detail: string) => unknown;
 }
@@ -62,6 +63,10 @@ const TRANSITIONS = ["fade", "smoothleft", "smoothup", "circleopen", "slideleft"
 
 const hex = (c: string) => "0x" + c.replace("#", "");
 
+function outputSpecFor(videoFormat: "portrait" | "landscape" = "portrait") {
+  return videoFormat === "landscape" ? { ...OUTPUT_SPEC, width: 1920, height: 1080 } : OUTPUT_SPEC;
+}
+
 /** motion_art.py yolu tembel çözülür: Next.js derlemesi import.meta.url'i dosya URL'si olarak vermez */
 function motionArtScript(): string {
   try {
@@ -79,16 +84,17 @@ function motion3dScript(): string {
   }
 }
 
-/** 3D sahne iç çözünürlüğü; ffmpeg 1080x1920'ye büyütür */
-const M3D_W = 540, M3D_H = 960;
+/** 3D sahne iç çözünürlüğü; son montajda hedef çözünürlüğe büyütülür */
 
 /**
  * Sahneyi kodla 3D hareketli klip olarak çizer (motion3d.py, numpy ışın izleme):
  * senaryodaki scene_3d tarifi (nesneler, renkler, hareketler, kamera) kare kare render edilir
  * ve ham kareler doğrudan ffmpeg'e akıtılır. Python/numpy yoksa veya hata verirse null döner.
  */
-export async function renderMotion3d(opts: { out: string; spec: unknown; durationSec: number; brand: RenderInput["brand"]; index: number }): Promise<string | null> {
-  const fps = OUTPUT_SPEC.fps;
+export async function renderMotion3d(opts: { out: string; spec: unknown; durationSec: number; brand: RenderInput["brand"]; index: number; videoFormat?: "portrait" | "landscape" }): Promise<string | null> {
+  const outputSpec = outputSpecFor(opts.videoFormat);
+  const M3D_W = Math.round(outputSpec.width / 2), M3D_H = Math.round(outputSpec.height / 2);
+  const fps = outputSpec.fps;
   const frames = Math.max(1, Math.ceil(opts.durationSec * fps));
   const pyArgs = [motion3dScript(), "--spec", JSON.stringify(opts.spec ?? {}), "--duration", opts.durationSec.toFixed(3), "--fps", String(fps), "--width", String(M3D_W), "--height", String(M3D_H),
     "--primary", opts.brand.primaryColor, "--secondary", opts.brand.secondaryColor, "--accent", opts.brand.accentColor, "--index", String(opts.index)];
@@ -165,9 +171,9 @@ export function planDurations(sceneDurations: number[], voiceSec: number, minSec
   return { total, contentSec, scenes: scaled };
 }
 
-async function renderSegment(input: RenderInput, scene: RenderInput["scenes"][number], dur: number, idx: number, clip3d?: string | null): Promise<string> {
+async function renderSegment(input: RenderInput, scene: RenderInput["scenes"][number], dur: number, idx: number, clip3d: string | null | undefined, outputSpec: ReturnType<typeof outputSpecFor>): Promise<string> {
   const out = path.join(input.workDir, `seg_${idx}.mp4`);
-  const W = OUTPUT_SPEC.width, H = OUTPUT_SPEC.height, fps = OUTPUT_SPEC.fps;
+  const W = outputSpec.width, H = outputSpec.height, fps = outputSpec.fps;
   const frames = Math.ceil(dur * fps);
   let s: ResolvedScene = scene;
   if (s.kind === "GENERATED" && clip3d) {
@@ -226,9 +232,9 @@ async function renderSegment(input: RenderInput, scene: RenderInput["scenes"][nu
   return out;
 }
 
-async function renderOutro(input: RenderInput, dur: number) {
+async function renderOutro(input: RenderInput, dur: number, outputSpec: ReturnType<typeof outputSpecFor>) {
   const out = path.join(input.workDir, "seg_outro.mp4");
-  const W = OUTPUT_SPEC.width, H = OUTPUT_SPEC.height, fps = OUTPUT_SPEC.fps;
+  const W = outputSpec.width, H = outputSpec.height, fps = outputSpec.fps;
   const args = ["-f", "lavfi", "-i", `gradients=s=${W}x${H}:c0=${hex(input.brand.primaryColor)}:c1=${hex(input.brand.secondaryColor)}:speed=0.02:r=${fps}:d=${dur.toFixed(3)}`];
   let vf = `[0:v]fps=${fps},setsar=1,format=yuv420p[v]`;
   if (input.logoPath) {
@@ -242,9 +248,10 @@ async function renderOutro(input: RenderInput, dur: number) {
 /**
  * Montaj: sahne kliplerini normalize eder, geçişlerle birleştirir, altyazı/başlık/
  * açılış-kapanış animasyonlarını (ASS) yakar, logo ekler, sesi ve müziği miksler.
- * Çıktı: 1080x1920, 30 FPS, H.264 High, AAC 48 kHz stereo, MP4 (faststart).
+ * Çıktı: seçime göre 1080x1920 veya 1920x1080, 30 FPS, H.264 High, AAC 48 kHz stereo, MP4 (faststart).
  */
 export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
+  const outputSpec = outputSpecFor(input.videoFormat);
   const shorts = isShorts(input);
   const outroSec = shorts ? SHORTS_OUTRO : OUTRO;
   const xf = shorts ? SHORTS_XFADE : XFADE;
@@ -265,7 +272,7 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
     let done = 0;
     await progress(0, `3D sahneler çiziliyor (0/${gen.length})`);
     await mapLimit(gen, limit, async ({ s, i }) => {
-      clips[i] = await renderMotion3d({ out: path.join(input.workDir, `scene_${i}_3d.mp4`), spec: s.scene3d, durationSec: segDur[i], brand: input.brand, index: i });
+      clips[i] = await renderMotion3d({ out: path.join(input.workDir, `scene_${i}_3d.mp4`), spec: s.scene3d, durationSec: segDur[i], brand: input.brand, index: i, videoFormat: input.videoFormat });
       done++;
       await progress((done / gen.length) * 0.55, `3D sahneler çiziliyor (${done}/${gen.length})`);
     });
@@ -273,11 +280,11 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   const base = gen.length ? 0.55 : 0;
   for (let i = 0; i < n; i++) {
     await progress(base + (i / (n + 1)) * (0.75 - base), `Sahne ${i + 1}/${n} hazırlanıyor`);
-    segFiles.push(await renderSegment(input, input.scenes[i], segDur[i], i, clips[i]));
+    segFiles.push(await renderSegment(input, input.scenes[i], segDur[i], i, clips[i], outputSpec));
   }
   if (!shorts) {
     await progress((n / (n + 1)) * 0.75, "Kapanış sahnesi");
-    segFiles.push(await renderOutro(input, outroSec));
+    segFiles.push(await renderOutro(input, outroSec, outputSpec));
   }
   await progress(0.75, "Altyazı ve geçişler");
   const allDur = shorts ? segDur : [...segDur, outroSec];
@@ -386,13 +393,13 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
     "-filter_complex", parts.join(";"),
     "-map", "[vout]", "-map", "[aout]",
     "-t", total,
-    "-r", String(OUTPUT_SPEC.fps),
+    "-r", String(outputSpec.fps),
     "-c:v", "libx264", "-profile:v", "high", "-level:v", "4.1", "-preset", "medium", "-crf", "21",
     "-maxrate", "10M", "-bufsize", "20M", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
     "-movflags", "+faststart",
     outputPath,
-  ]);
+  ], Math.max(600, input.maxDurationSec * 5));
 
   await progress(0.97, "Kapak görseli");
   const thumbnailPath = path.join(input.workDir, "thumb.jpg");
@@ -401,6 +408,7 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   return { outputPath, thumbnailPath, assPath, durationSec: p.durationSec, captions, segments };
 }
 
-function isShorts(input: Pick<RenderInput, "template">) {
-  return input.template === SHORTS_TEMPLATE;
+function isShorts(input: Pick<RenderInput, "template" | "videoFormat">) {
+  // shorts3d yalnızca dikey 9:16 için tasarlandı; yatay videoda modern şablon kullanılır
+  return input.template === SHORTS_TEMPLATE && input.videoFormat !== "landscape";
 }

@@ -63,6 +63,7 @@ export async function chatJson<T = unknown>(opts: {
   schemaName?: string;
   jsonSchema?: Record<string, unknown>;
   maxOutputTokens?: number;
+  timeoutMs?: number;
   provider?: "openai" | "anthropic";
 }): Promise<JsonChatResult<T>> {
   const settings = env();
@@ -72,7 +73,9 @@ export async function chatJson<T = unknown>(opts: {
   const provider = (keys.activeProvider ?? opts.provider ?? settings.AI_TEXT_PROVIDER) === "anthropic" && anthropicKey ? "anthropic" : "openai";
   const model = (provider === "anthropic" ? keys.models?.anthropic : keys.models?.openai) ?? (provider === "anthropic" ? settings.ANTHROPIC_MODEL : settings.OPENAI_MODEL);
   const outputLimit = opts.maxOutputTokens ?? 4000;
-  const estimatedCost = provider === "anthropic" ? anthropicCost(3000, outputLimit) : openAiCost(3000, outputLimit);
+  const schemaText = opts.jsonSchema ? JSON.stringify(opts.jsonSchema) ?? "" : "";
+  const estimatedInputTokens = Math.max(3000, Math.ceil((opts.system.length + opts.user.length + schemaText.length) / 3));
+  const estimatedCost = provider === "anthropic" ? anthropicCost(estimatedInputTokens, outputLimit) : openAiCost(estimatedInputTokens, outputLimit);
   await assertCanSpend(opts.brandId, estimatedCost, opts.operation);
   let rawText = "";
   let inputTokens = 0;
@@ -84,7 +87,7 @@ export async function chatJson<T = unknown>(opts: {
         method: "POST",
         headers: { "content-type": "application/json", "x-api-key": anthropicKey!, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({ model, max_tokens: outputLimit, system: opts.system + String.fromCharCode(10, 10) + "Return exactly one valid JSON object and no Markdown." + schemaInstruction, messages: [{ role: "user", content: opts.user }] }),
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(opts.timeoutMs ?? 90_000),
       });
       const payload = await response.json() as any;
       if (!response.ok) {
@@ -105,7 +108,7 @@ export async function chatJson<T = unknown>(opts: {
         response_format: opts.jsonSchema ? { type: "json_schema", json_schema: { name: opts.schemaName ?? "output", schema: opts.jsonSchema, strict: false } } : { type: "json_object" },
         max_completion_tokens: reasoning ? outputLimit + REASONING_HEADROOM : outputLimit,
         ...(reasoning ? { reasoning_effort: "low" as const } : {}),
-      });
+      }, { timeout: opts.timeoutMs ?? 90_000 });
       if (response.choices[0]?.finish_reason === "length") {
         throw new ProviderError("OpenAI yanıtı token limitinde kesildi", "openai", "OUTPUT_TRUNCATED", true, undefined, "validation");
       }

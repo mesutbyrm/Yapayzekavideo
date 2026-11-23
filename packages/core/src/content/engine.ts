@@ -22,20 +22,45 @@ export async function generateIdeas(brandId: string, count = 5, topic = "") {
   });
   const usedTopics = used.map((u) => u.topic);
   const hints = await topPerformingTopics(brandId, 5).catch(() => []);
-  const res = await chatJson({
-    system: IDEAS_SYSTEM,
-    user: ideasUser(brandContext(brand, categories), count + 3, usedTopics.slice(0, 80), hints, topic),
-    brandId,
-    operation: "content.ideas",
-    schemaName: "ideas",
-    jsonSchema: ideasJsonSchema as any,
-    maxOutputTokens: 3000,
-  });
-  const parsed = ideasSchema.safeParse(res.data);
-  if (!parsed.success) throw new ProviderError("Fikir JSON doğrulaması başarısız", "openai", "IDEAS_INVALID", true);
+  const baseUserPrompt = ideasUser(brandContext(brand, categories), count + 3, usedTopics.slice(0, 80), hints, topic);
+  let ideas: Array<{ topic: string; angle?: string; category?: string; why_now?: string }> | null = null;
+  let validationIssues: string[] = [];
+  let provider = "anthropic";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const res = await chatJson({
+      system: IDEAS_SYSTEM,
+      user: attempt === 1 ? baseUserPrompt : baseUserPrompt + "\n\nÖNCEKİ JSON ŞEMADAN GEÇMEDİ. Sorunlar: " + validationIssues.join("; ") + ". Her elemanda topic, angle, category, why_now alanlarının hepsini metin olarak ver. Sadece istenen JSON nesnesini döndür.",
+      brandId,
+      operation: "content.ideas",
+      schemaName: "ideas",
+      jsonSchema: ideasJsonSchema as any,
+      maxOutputTokens: 3000,
+    });
+    provider = res.provider.toLowerCase();
+    // Modeller bazen boş/null opsiyonel alanlar veya tekil "idea" kapsayıcısı üretir.
+    // Geçerli konu metinlerini koru; eksik açıklama alanlarını şema açısından opsiyonel say.
+    const raw = res.data as any;
+    const candidates = Array.isArray(raw) ? raw : Array.isArray(raw?.ideas) ? raw.ideas : raw?.idea ? [raw.idea] : [];
+    const normalized = candidates.map((item: any) => ({
+      topic: typeof item?.topic === "string" ? item.topic.trim() : typeof item?.title === "string" ? item.title.trim() : "",
+      angle: typeof item?.angle === "string" && item.angle.trim() ? item.angle.trim() : undefined,
+      category: typeof item?.category === "string" && item.category.trim() ? item.category.trim() : undefined,
+      why_now: typeof item?.why_now === "string" && item.why_now.trim() ? item.why_now.trim() : undefined,
+    })).filter((item: any) => item.topic.length >= 5 && item.topic.length <= 160);
+    const parsed = ideasSchema.safeParse({ ideas: normalized.slice(0, 20) });
+    if (parsed.success && parsed.data.ideas.length) {
+      ideas = parsed.data.ideas;
+      break;
+    }
+    validationIssues = parsed.success ? ["ideas dizisi boş"] : parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".") || "ideas"}: ${issue.message}`);
+    logger.warn({ brandId, provider, issues: validationIssues }, "fikir JSON şeması geçersiz; düzeltme isteniyor");
+  }
+  if (!ideas) {
+    throw new ProviderError("Fikir JSON doğrulaması başarısız: " + validationIssues.join("; "), provider, "IDEAS_INVALID", true);
+  }
 
   const created = [];
-  for (const idea of parsed.data.ideas) {
+  for (const idea of ideas) {
     if (created.length >= count) break;
     if (isNearDuplicate(idea.topic, usedTopics)) continue;
     const cat = categories.find((c) => c.name.toLocaleLowerCase("tr") === idea.category?.toLocaleLowerCase("tr"));
@@ -69,7 +94,7 @@ export async function pickIdea(brandId: string) {
  * Senaryo üretimi: JSON şema doğrulama + süre kontrolü + tekrar kontrolü + güvenlik.
  * Hatalı çıktıda hatalar modele geri bildirilerek en fazla 3 kez kontrollü yeniden üretim yapılır.
  */
-export async function generateScript(brandId: string, ideaId: string, videoId?: string | null, opts?: { minSeconds?: number; maxSeconds?: number; language?: string; subtitles?: boolean }) {
+export async function generateScript(brandId: string, ideaId: string, videoId?: string | null, opts?: { minSeconds?: number; maxSeconds?: number; videoFormat?: "portrait" | "landscape"; language?: string; subtitles?: boolean; brief?: string }) {
   const brand = await prisma.brand.findUniqueOrThrow({ where: { id: brandId } });
   const idea = await prisma.contentIdea.findUniqueOrThrow({ where: { id: ideaId } });
   if (idea.brandId !== brandId) throw new AppError("Fikir bu markaya ait değil", "FORBIDDEN", 403);
@@ -90,14 +115,15 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
   for (let attempt = 1; attempt <= MAX_SCRIPT_ATTEMPTS; attempt++) {
     try {
       const res = await chatJson<unknown>({
-        system: scriptSystem(minSeconds, maxSeconds, languageName, brand.videoTemplate),
-        user: scriptUser(ctx, idea.topic, idea.angle, feedback) + "\nWrite the title, hook, narration, subtitles, CTA, and metadata entirely in " + languageName + ".",
+        system: scriptSystem(minSeconds, maxSeconds, languageName, opts?.videoFormat, opts?.videoFormat === "landscape" ? undefined : brand.videoTemplate),
+        user: scriptUser(ctx, idea.topic, idea.angle, feedback, opts?.brief) + "\nWrite the title, hook, narration, subtitles, CTA, and metadata entirely in " + languageName + ".",
         brandId,
         videoId,
         operation: "content.script",
         schemaName: "video_script",
         jsonSchema: scriptJsonSchema as any,
-        maxOutputTokens: 4000,
+        maxOutputTokens: Math.min(20_000, Math.max(4_000, Math.ceil(maxSeconds * 26))),
+        timeoutMs: maxSeconds > 180 ? 300_000 : 90_000,
       });
       const parsed = scriptSchema.safeParse(normalizeScript(res.data));
       if (!parsed.success) {
@@ -106,6 +132,12 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
         continue;
       }
       const script = parsed.data;
+      const visualIssues = validateMotionGraphics(script, minSeconds, maxSeconds);
+      if (visualIssues.length) {
+        feedback = visualIssues;
+        lastErr = new ProviderError("3D sahne tasarımı yetersiz", "openai", "SCRIPT_VISUAL_QUALITY", true);
+        continue;
+      }
       const timing = validateTiming(script, minSeconds, maxSeconds);
       if (timing.length) {
         feedback = timing;
@@ -135,7 +167,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
           cta: script.cta,
           hashtags: mergeHashtags(script.hashtags, brand.hashtags),
           platformMetadata: script.platform_metadata as any,
-          raw: { ...(res.data as any), productionOptions: { minSeconds, maxSeconds, language, subtitles: opts?.subtitles ?? true } },
+          raw: { ...(res.data as any), productionOptions: { minSeconds, maxSeconds, videoFormat: opts?.videoFormat ?? "portrait", language, subtitles: opts?.subtitles ?? true } },
           model: res.model,
           attempts: attempt,
           safetyFlags: safety.flags,
@@ -161,6 +193,19 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
   }
   await prisma.contentIdea.update({ where: { id: ideaId }, data: { status: "REJECTED" } });
   throw lastErr instanceof Error ? lastErr : new AppError("Senaryo üretilemedi", "SCRIPT_FAILED");
+}
+
+/** Yeni videolarda anlamlı ve çeşitli motion graphics sahnelerini zorunlu tutar. */
+function validateMotionGraphics(script: VideoScriptJson, minSeconds: number, maxSeconds: number): string[] {
+  const errors: string[] = [];
+  const requiredScenes = maxSeconds <= 90 ? 5 : Math.max(6, Math.ceil(minSeconds / 20));
+  if (script.scenes.length < requiredScenes) errors.push(`${minSeconds}-${maxSeconds} saniyelik video için en az ${requiredScenes} ayrı sahne üret; uzun videolarda her sahnede yeni bilgi veya görsel olay olsun.`);
+  const missing = script.scenes.map((scene, i) => scene.scene_3d?.objects?.length ? -1 : i + 1).filter((i) => i > 0);
+  if (missing.length) errors.push(`scene_3d eksik sahneler: ${missing.join(", ")}. Her sahneye konuya uygun ana figür ve hareket ekle.`);
+  if (script.scenes.some((scene) => (scene.scene_3d?.objects?.length ?? 0) > 3)) errors.push("Her 3D sahnede en fazla 3 anlamlı nesne kullan; dekoratif şekillerle doldurma.");
+  const shapes = new Set(script.scenes.flatMap((scene) => scene.scene_3d?.objects?.map((object) => object.shape) ?? []));
+  if (shapes.size < Math.min(4, script.scenes.length)) errors.push("3D ana figürler ve kompozisyonlar sahneler arasında daha fazla çeşitlenmeli.");
+  return errors;
 }
 
 /** Model çıktısındaki küçük biçim farklarını düzeltir (ör. # eksik hashtag) */

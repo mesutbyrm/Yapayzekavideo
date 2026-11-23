@@ -63,8 +63,8 @@ export function AutomationClient({ brand, schedules: initial, settings, isAdmin,
           <div className="grid grid-cols-2 gap-3">
             <Field label="Günlük video hedefi"><Input type="number" min={0} max={50} value={b.dailyVideoTarget} onChange={(e) => setB({ ...b, dailyVideoTarget: Number(e.target.value) })} /></Field>
             <Field label="Aylık video hedefi"><Input type="number" min={0} max={1500} value={b.monthlyVideoTarget} onChange={(e) => setB({ ...b, monthlyVideoTarget: Number(e.target.value) })} /></Field>
-            <Field label="Min. süre (sn)"><Input type="number" min={5} max={170} value={b.minDurationSec} onChange={(e) => setB({ ...b, minDurationSec: Number(e.target.value) })} /></Field>
-            <Field label="Maks. süre (sn)"><Input type="number" min={6} max={180} value={b.maxDurationSec} onChange={(e) => setB({ ...b, maxDurationSec: Number(e.target.value) })} /></Field>
+            <Field label="Min. süre (sn)"><Input type="number" min={5} max={720} value={b.minDurationSec} onChange={(e) => setB({ ...b, minDurationSec: Number(e.target.value) })} /></Field>
+            <Field label="Maks. süre (sn)"><Input type="number" min={6} max={720} value={b.maxDurationSec} onChange={(e) => setB({ ...b, maxDurationSec: Number(e.target.value) })} /></Field>
           </div>
           <Button onClick={() => save(() => apiFetch(`/api/brands/${b.id}`, { method: "PATCH", json: { autoGenerate: b.autoGenerate, autoPublish: b.autoPublish, dailyVideoTarget: b.dailyVideoTarget, monthlyVideoTarget: b.monthlyVideoTarget, minDurationSec: b.minDurationSec, maxDurationSec: b.maxDurationSec } }), "Marka ayarları kaydedildi")}>Kaydet</Button>
         </CardContent>
