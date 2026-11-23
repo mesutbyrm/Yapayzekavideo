@@ -2,6 +2,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { env } from "../lib/env";
 import { logger } from "../lib/logger";
 import { ffmpeg, probe, escapeFilterPath } from "./ffmpeg";
@@ -14,7 +15,7 @@ export const OUTPUT_SPEC = { width: 1080, height: 1920, fps: 30, vcodec: "h264",
 
 export interface RenderInput {
   workDir: string;
-  scenes: (ResolvedScene & { subtitle: string; visualDescription?: string })[];
+  scenes: (ResolvedScene & { subtitle: string; visualDescription?: string; scene3d?: unknown })[];
   voicePath: string;
   voiceDurationSec: number;
   words: WordTiming[];
@@ -70,6 +71,68 @@ function motionArtScript(): string {
   }
 }
 
+function motion3dScript(): string {
+  try {
+    return fileURLToPath(new URL("./motion3d.py", import.meta.url));
+  } catch {
+    return path.resolve(process.cwd(), "../../packages/core/src/video/motion3d.py");
+  }
+}
+
+/** 3D sahne iç çözünürlüğü; ffmpeg 1080x1920'ye büyütür */
+const M3D_W = 540, M3D_H = 960;
+
+/**
+ * Sahneyi kodla 3D hareketli klip olarak çizer (motion3d.py, numpy ışın izleme):
+ * senaryodaki scene_3d tarifi (nesneler, renkler, hareketler, kamera) kare kare render edilir
+ * ve ham kareler doğrudan ffmpeg'e akıtılır. Python/numpy yoksa veya hata verirse null döner.
+ */
+export async function renderMotion3d(opts: { out: string; spec: unknown; durationSec: number; brand: RenderInput["brand"]; index: number }): Promise<string | null> {
+  const fps = OUTPUT_SPEC.fps;
+  const frames = Math.max(1, Math.ceil(opts.durationSec * fps));
+  const pyArgs = [motion3dScript(), "--spec", JSON.stringify(opts.spec ?? {}), "--duration", opts.durationSec.toFixed(3), "--fps", String(fps), "--width", String(M3D_W), "--height", String(M3D_H),
+    "--primary", opts.brand.primaryColor, "--secondary", opts.brand.secondaryColor, "--accent", opts.brand.accentColor, "--index", String(opts.index)];
+  const ffArgs = ["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-threads", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${M3D_W}x${M3D_H}`, "-r", String(fps), "-i", "pipe:0",
+    "-frames:v", String(frames), "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", opts.out];
+  // Kare başına ~0.2 sn (tek çekirdek) + pay
+  const timeoutMs = Math.max(60_000, frames * 600);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const py = spawn("nice", ["-n", "10", env().MOTION_ART_PYTHON, ...pyArgs], { stdio: ["ignore", "pipe", "pipe"] });
+      const ff = spawn("nice", ["-n", "10", env().FFMPEG_PATH, ...ffArgs], { stdio: ["pipe", "ignore", "pipe"] });
+      let err = "";
+      const tail = (d: Buffer) => (err = (err + d).slice(-2000));
+      py.stderr.on("data", tail); ff.stderr.on("data", tail);
+      py.stdout.pipe(ff.stdin);
+      ff.stdin.on("error", () => undefined);
+      const timer = setTimeout(() => { py.kill("SIGKILL"); ff.kill("SIGKILL"); }, timeoutMs);
+      let pyCode: number | null = null;
+      py.on("error", (e) => { clearTimeout(timer); ff.kill("SIGKILL"); reject(e); });
+      ff.on("error", (e) => { clearTimeout(timer); py.kill("SIGKILL"); reject(e); });
+      py.on("close", (code) => { pyCode = code; });
+      ff.on("close", (code) => {
+        clearTimeout(timer);
+        code === 0 && pyCode === 0 ? resolve() : reject(new Error(`motion3d python=${pyCode} ffmpeg=${code}: ${err}`));
+      });
+    });
+    const st = await stat(opts.out);
+    return st.size > 0 ? opts.out : null;
+  } catch (err) {
+    logger.warn({ scene: opts.index, err: (err as Error).message.slice(0, 400) }, "3D sahne çizilemedi, durağan görsele düşülüyor");
+    return null;
+  }
+}
+
+/** Sınırlı eşzamanlılıkla işler (sahneler paralel çizilir, CPU çekirdeği kadar) */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); }
+  }));
+  return out;
+}
+
 /**
  * Sahne görselini kodla çizer (motion_art.py, Pillow): marka renkleri + sahne açıklamasına göre figür.
  * Python/Pillow yoksa veya hata verirse null döner; çağıran gradyan arka plana düşer.
@@ -102,14 +165,17 @@ export function planDurations(sceneDurations: number[], voiceSec: number, minSec
   return { total, contentSec, scenes: scaled };
 }
 
-async function renderSegment(input: RenderInput, scene: RenderInput["scenes"][number], dur: number, idx: number): Promise<string> {
+async function renderSegment(input: RenderInput, scene: RenderInput["scenes"][number], dur: number, idx: number, clip3d?: string | null): Promise<string> {
   const out = path.join(input.workDir, `seg_${idx}.mp4`);
   const W = OUTPUT_SPEC.width, H = OUTPUT_SPEC.height, fps = OUTPUT_SPEC.fps;
   const frames = Math.ceil(dur * fps);
   let s: ResolvedScene = scene;
-  if (s.kind === "GENERATED" && !isShorts(input)) {
-    // (shorts3d şablonunda ücretsiz sahnelerde ASS ile çizilen robot maskot kullanılır)
-    // Kodla üretilen sahne: çizilen görsel Ken Burns ile canlandırılır
+  if (s.kind === "GENERATED" && clip3d) {
+    // Kodla çizilmiş 3D hareketli klip
+    s = { ...s, kind: "VIDEO", filePath: clip3d };
+  } else if (s.kind === "GENERATED" && !isShorts(input)) {
+    // (shorts3d: 3D klip yoksa parlak arka plan + ASS robot maskot kullanılır)
+    // Yedek: tek kare çizim Ken Burns ile canlandırılır
     const art = await renderMotionArt({ out: path.join(input.workDir, `scene_${idx}_art.png`), description: `${scene.visualDescription ?? ""} ${scene.subtitle ?? ""}`, brand: input.brand, index: idx });
     if (art) s = { ...s, kind: "IMAGE", filePath: art };
   }
@@ -190,10 +256,24 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   const segDur = plan.scenes.map((d, i) => d + (shorts && i === n - 1 ? outroSec : xf));
   const segFiles: string[] = [];
   const progress = async (fraction: number, detail: string) => { await Promise.resolve(input.onProgress?.(fraction, detail)).catch(() => undefined); };
-  // Sahne çizimi montajın büyük kısmıdır (%0–75), son kodlama %75–100
+  // Sahne çizimi montajın büyük kısmıdır (%0–75), son kodlama %75–100.
+  // Önce kodla üretilecek 3D sahneler çekirdek sayısı kadar paralel çizilir (%0–55).
+  const gen = input.scenes.map((s, i) => ({ s, i })).filter(({ s }) => s.kind === "GENERATED");
+  const clips: (string | null)[] = new Array(n).fill(null);
+  if (gen.length) {
+    const limit = Math.max(1, Math.min(4, os.cpus().length - 1));
+    let done = 0;
+    await progress(0, `3D sahneler çiziliyor (0/${gen.length})`);
+    await mapLimit(gen, limit, async ({ s, i }) => {
+      clips[i] = await renderMotion3d({ out: path.join(input.workDir, `scene_${i}_3d.mp4`), spec: s.scene3d, durationSec: segDur[i], brand: input.brand, index: i });
+      done++;
+      await progress((done / gen.length) * 0.55, `3D sahneler çiziliyor (${done}/${gen.length})`);
+    });
+  }
+  const base = gen.length ? 0.55 : 0;
   for (let i = 0; i < n; i++) {
-    await progress((i / (n + 1)) * 0.75, `Sahne ${i + 1}/${n} çiziliyor`);
-    segFiles.push(await renderSegment(input, input.scenes[i], segDur[i], i));
+    await progress(base + (i / (n + 1)) * (0.75 - base), `Sahne ${i + 1}/${n} hazırlanıyor`);
+    segFiles.push(await renderSegment(input, input.scenes[i], segDur[i], i, clips[i]));
   }
   if (!shorts) {
     await progress((n / (n + 1)) * 0.75, "Kapanış sahnesi");
@@ -241,7 +321,7 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
       highlights: o.highlights ?? {},
       chips: sceneSegs.map((s) => ({ start: s.start + 0.25, end: Math.min(s.start + s.duration - 0.1, s.start + 3.2), text: o.labels?.[s.index] ?? "" })),
       mascotRanges: sceneSegs
-        .filter((s) => input.scenes[s.index].kind === "GENERATED")
+        .filter((s) => input.scenes[s.index].kind === "GENERATED" && !clips[s.index])
         .map((s) => ({ start: s.start, end: s.index === n - 1 ? plan.total : s.start + s.duration + xf })),
       outro: { start: plan.total - outroSec + 0.1, end: plan.total, title: "TAKİP ET!", subtitle: o.outroSubtitle ?? null },
       seed: input.title.length + n,

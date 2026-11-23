@@ -45,7 +45,12 @@ Zorunlu kurallar:
 7. Şarkı sözü, film repliği, telifli metin alıntısı KULLANMA. Gerçek kişileri karalama.
 8. "hashtags": 5-10 adet, # ile başlayan, boşluksuz, Türkçe karakter kullanılabilir. #kesfet gibi genel etiketlerin yanında konuya özel etiketler.
 9. "platform_metadata": instagram/facebook/tiktok/youtube için ayrı "title" (YouTube için en fazla 90 karakter, #Shorts ekle), "caption" (platform diline uygun, 1-3 cümle + hashtagler), "description", "hashtags".
-10. "fact_check_notes": metindeki iddiaların neden güvenilir olduğunu kısaca açıkla.`;
+10. "fact_check_notes": metindeki iddiaların neden güvenilir olduğunu kısaca açıkla.
+11. "scene_3d": her sahne kodla çizilen hareketli bir 3D sahneye dönüşür. O sahnede ANLATILAN şeyi temsil eden 1-5 nesne seç; her sahne farklı olsun, aynı kompozisyonu tekrar etme.
+   - shape: sphere, cube, slab (kart/belge), pillar (kule/sütun), cylinder, coin (para), ring (halka/döngü), helix (DNA/bilim/gelişim), bar_chart (büyüme/istatistik), coin_stack (birikim/para), grid (veri/şehir/sistem), phone (uygulama/sosyal medya), planet (dünya/uzay/küresel).
+   - motion: spin, bob, orbit, pulse (kalp atışı/vurgu), bounce (enerji/neşe), float, none. camera: orbit, dolly (yaklaşma/odak), crane (yukarıdan iniş/açılış), static.
+   - color: #RRGGBB, konuya uygun (para=altın, doğa=yeşil, teknoloji=mavi/mor, tehlike=kırmızı).
+   - Konum: x -1.5..1.5 (sol/sağ), y -0.8..1.5 (yukarı), z -1.5..1.2 (derinlik); size 0.3..1.2. Nesneler birbirinin içine girmesin, ana nesne ortada ve büyük olsun.`;
 
 /** "shorts3d" şablonu: referans videolardaki (Yapay Zekâ Komedisi) anlatım ve görsel dil */
 export const SHORTS3D_RULES = `

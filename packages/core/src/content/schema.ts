@@ -1,5 +1,29 @@
 import { z } from "zod";
 
+export const SCENE3D_SHAPES = ["sphere", "cube", "slab", "pillar", "cylinder", "coin", "ring", "helix", "bar_chart", "coin_stack", "grid", "phone", "planet"] as const;
+export const SCENE3D_MOTIONS = ["spin", "bob", "orbit", "pulse", "bounce", "float", "none"] as const;
+export const SCENE3D_CAMERAS = ["orbit", "dolly", "crane", "static"] as const;
+
+/** Kodla çizilen 3D sahnenin tarifi: hangi nesneler, nerede, hangi renkte ve nasıl hareket ediyor */
+export const scene3dSchema = z.object({
+  camera: z.enum(SCENE3D_CAMERAS),
+  objects: z
+    .array(
+      z.object({
+        shape: z.enum(SCENE3D_SHAPES),
+        color: z.string().max(16),
+        x: z.number(),
+        y: z.number(),
+        z: z.number(),
+        size: z.number(),
+        motion: z.enum(SCENE3D_MOTIONS),
+      }),
+    )
+    .min(1)
+    .max(6),
+});
+export type Scene3d = z.infer<typeof scene3dSchema>;
+
 export const sceneSchema = z.object({
   duration: z.number().min(1.5).max(12),
   visual_description: z.string().min(3).max(400),
@@ -8,6 +32,9 @@ export const sceneSchema = z.object({
   subtitle: z.string().min(1).max(160),
   /** shorts3d: ekranda eğik hap olarak görünen kısa etiket (ör. "2017 · MIT"); boş olabilir */
   label: z.string().max(40).optional(),
+  /** Eski senaryolarda yok; yoksa sahneye uygun varsayılan 3D kompozisyon kullanılır */
+  // Bozuk 3D tarifi senaryonun tamamını düşürmesin: geçersizse yok sayılır
+  scene_3d: scene3dSchema.optional().catch(undefined),
 });
 
 const platformMeta = z
@@ -58,13 +85,38 @@ export const scriptJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["duration", "visual_description", "search_keywords", "subtitle", "label"],
+        required: ["duration", "visual_description", "search_keywords", "subtitle", "label", "scene_3d"],
         properties: {
           duration: { type: "number" },
           visual_description: { type: "string" },
           search_keywords: { type: "array", items: { type: "string" } },
           subtitle: { type: "string" },
           label: { type: "string" },
+          scene_3d: {
+            type: "object",
+            additionalProperties: false,
+            required: ["camera", "objects"],
+            properties: {
+              camera: { type: "string", enum: [...SCENE3D_CAMERAS] },
+              objects: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["shape", "color", "x", "y", "z", "size", "motion"],
+                  properties: {
+                    shape: { type: "string", enum: [...SCENE3D_SHAPES] },
+                    color: { type: "string" },
+                    x: { type: "number" },
+                    y: { type: "number" },
+                    z: { type: "number" },
+                    size: { type: "number" },
+                    motion: { type: "string", enum: [...SCENE3D_MOTIONS] },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
