@@ -143,7 +143,7 @@ export function BrandForm({ initial, voices }: { initial: Form | null; voices: {
         <Field label="Vurgu"><Input type="color" className="h-9 p-1" value={f.accentColor} onChange={(e) => set("accentColor", e.target.value.toUpperCase())} /></Field>
       </div>
       <Field label="Font (altyazı)" hint="Sunucuda yüklü olmalı (ör. DejaVu Sans, Noto Sans)"><Input value={f.fontFamily} onChange={(e) => set("fontFamily", e.target.value)} /></Field>
-      <Field label="Video şablonu"><Select value={f.videoTemplate} onChange={(e) => set("videoTemplate", e.target.value)}><option value="modern">Modern (geçişli, başlık kutulu)</option></Select></Field>
+      <Field label="Video şablonu"><Select value={f.videoTemplate} onChange={(e) => set("videoTemplate", e.target.value)}><option value="modern">Modern (geçişli, başlık kutulu)</option><option value="shorts3d">Shorts 3D (seri hapı, sarı vurgulu dev altyazı, 3D karakter)</option></Select></Field>
       <Field label="Ses"><Select value={f.voiceName} onChange={(e) => { const v = voices.find((x) => x.name === e.target.value); set("voiceName", e.target.value); if (v) set("voiceGender", v.gender as any); }}>{voices.map((v) => <option key={v.name} value={v.name}>{v.name} ({v.gender === "MALE" ? "Erkek" : "Kadın"})</option>)}</Select></Field>
       <Field label={`Konuşma hızı: ${f.speakingRate}`}><input type="range" min={0.8} max={1.3} step={0.01} value={f.speakingRate} onChange={(e) => set("speakingRate", Number(e.target.value))} /></Field>
       <Field label={`Ses tonu: ${f.voicePitch}`}><input type="range" min={-6} max={6} step={0.5} value={f.voicePitch} onChange={(e) => set("voicePitch", Number(e.target.value))} /></Field>

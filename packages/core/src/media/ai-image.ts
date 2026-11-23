@@ -12,14 +12,22 @@ export function aiImagesEnabled() {
   return !!env().AI_IMAGES_ENABLED && !!env().OPENAI_API_KEY;
 }
 
-export async function generateAiImage(prompt: string, outPath: string, ctx: { brandId: string; videoId?: string | null }) {
+/** Şablona göre görsel üslubu. shorts3d: referans videolardaki parlak, sevimli 3D karakter görünümü */
+export function aiImagePrompt(prompt: string, style?: { template?: string; primaryColor?: string }) {
+  if (style?.template === "shorts3d") {
+    return `${prompt}. Cute stylized 3D render in a Pixar / Blender toy style: one main character or object, glossy soft plastic materials, big expressive eyes if it is a character, centered in the middle of the frame with empty space above and below, soft studio lighting, smooth bright gradient background in the color ${style.primaryColor ?? "#7C3AED"} with soft bokeh light dots, vertical 9:16 composition, no text, no letters, no logos, no watermarks, no real identifiable people.`;
+  }
+  return `${prompt}. Vertical 9:16 composition, photorealistic, no text, no logos, no watermarks, no real identifiable people.`;
+}
+
+export async function generateAiImage(prompt: string, outPath: string, ctx: { brandId: string; videoId?: string | null; template?: string; primaryColor?: string }) {
   const e = env();
   await assertCanSpend(ctx.brandId, e.AI_IMAGE_PRICE_USD, "media.ai_image");
   let res;
   try {
     res = await openai().images.generate({
       model: e.OPENAI_IMAGE_MODEL,
-      prompt: `${prompt}. Vertical 9:16 composition, photorealistic, no text, no logos, no watermarks, no real identifiable people.`,
+      prompt: aiImagePrompt(prompt, ctx),
       size: "1024x1536",
       n: 1,
       quality: "low",

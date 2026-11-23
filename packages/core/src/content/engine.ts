@@ -115,7 +115,7 @@ export async function generateScript(brandId: string, ideaId: string, videoId?: 
   for (let attempt = 1; attempt <= MAX_SCRIPT_ATTEMPTS; attempt++) {
     try {
       const res = await chatJson<unknown>({
-        system: scriptSystem(minSeconds, maxSeconds, languageName, opts?.videoFormat),
+        system: scriptSystem(minSeconds, maxSeconds, languageName, opts?.videoFormat, opts?.videoFormat === "landscape" ? undefined : brand.videoTemplate),
         user: scriptUser(ctx, idea.topic, idea.angle, feedback, opts?.brief) + "\nWrite the title, hook, narration, subtitles, CTA, and metadata entirely in " + languageName + ".",
         brandId,
         videoId,

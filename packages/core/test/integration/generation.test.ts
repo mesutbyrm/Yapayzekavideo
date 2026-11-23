@@ -22,6 +22,7 @@ import { validScript } from "../helpers/fixtures";
 
 let openAiCalls: string[] = [];
 let moderationCalls = 0;
+let scriptOverride: any = null;
 
 beforeAll(async () => {
   process.env.OPENAI_API_KEY = "MOCK-not-a-real-key";
@@ -38,7 +39,7 @@ beforeAll(async () => {
         create: async (req: any) => {
           const name = req.response_format?.json_schema?.name;
           openAiCalls.push(name);
-          const content = name === "ideas" ? { ideas: [{ topic: "Ahtapotların üç kalbi neden var?", category: "Genel Bilgi" }, { topic: "Bal neden bozulmaz?" }] } : validScript;
+          const content = name === "ideas" ? { ideas: [{ topic: "Ahtapotların üç kalbi neden var?", category: "Genel Bilgi" }, { topic: "Bal neden bozulmaz?" }] } : (scriptOverride ?? validScript);
           return { model: "mock-model", usage: { prompt_tokens: 1200, completion_tokens: 800 }, choices: [{ message: { content: JSON.stringify(content) } }] };
         },
       },
@@ -107,5 +108,29 @@ describe("video üretim hattı", () => {
     const q2 = await enqueueGeneration(brand.id, { trigger: "manual" });
     await expect(generateVideo(q2.id)).rejects.toThrow();
     expect((await prisma.video.findUniqueOrThrow({ where: { id: q2.id } })).status).not.toBe("READY");
+  }, 240_000);
+
+  it("shorts3d şablonu: referans stilde (seri/bölüm hapı, kapak başlığı, vurgulu altyazı, maskot, TAKİP ET kartı) geçerli video üretir", async () => {
+    const brand = await makeBrand({ autoPublish: false, videoTemplate: "shorts3d", name: "Yapay Zekâ Komedisi" });
+    scriptOverride = {
+      ...validScript,
+      cover_title: "ÜÇ KALP|NEDEN?!",
+      highlight_words: ["ahtapotların", "kalbi", "mavi", "bakır"],
+      alert_words: ["üç"],
+      scenes: validScript.scenes.map((s, i) => ({ ...s, label: i === 1 ? "3 KALP" : "" })),
+    };
+    try {
+      const queued = await enqueueGeneration(brand.id, { trigger: "manual" });
+      const v = await generateVideo(queued.id);
+      expect(v.status).toBe("READY");
+      const local = path.join(os.tmpdir(), `asf-out-${v.id}.mp4`);
+      await storage().getToFile(v.storageKey!, local);
+      const p = await probe(local);
+      expect(p.video).toMatchObject({ width: 1080, height: 1920, codec: "h264" });
+      expect(p.durationSec).toBeGreaterThanOrEqual(20);
+      expect(p.durationSec).toBeLessThanOrEqual(30);
+    } finally {
+      scriptOverride = null;
+    }
   }, 240_000);
 });

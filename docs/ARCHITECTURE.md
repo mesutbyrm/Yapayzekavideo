@@ -24,6 +24,13 @@ worker: generateVideo
   7. Depolama (R2 veya yerel) → yayın işleri (hesap başına ayrı PublishJob)
 ```
 
+### Video şablonları
+
+Marka ayarındaki **Video şablonu** montaj stilini seçer:
+
+- `modern` (varsayılan): geçişli sahneler, kutulu başlık ve altyazı.
+- `shorts3d`: "Yapay Zekâ Komedisi" referans videolarının stili (`packages/core/src/video/shorts-style.ts`). Üstte seri adı ve "BÖLÜM N" hapı, ilk ~3 sn iki satırlık kapak başlığı (2. satır kırmızı), y≈1340'ta 1-3 kelimelik kalın siyah konturlu BÜYÜK HARF altyazı (anahtar kelimeler sarı, uyarı kelimeleri kırmızı), sahne etiketi hapı (ör. "2017 · MIT"), bokeh ışıkları, altta ilerleme çubuğu, kapanışta "TAKİP ET!" + "Bölüm N+1 yakında!". Görseller için `AI_IMAGES_ENABLED=true` ise sahne başına sevimli 3D karakter/nesne üretilir (stok videodan önce denenir); kapalıysa ücretsiz parlak arka plan üzerinde vektör robot maskot kullanılır. Senaryo bu şablonda esprili "biliyor muydunuz" anlatımı, `cover_title`, `highlight_words`, `alert_words` ve sahne `label` alanlarıyla üretilir. Referansla aynı uzunluk için marka süresini 50-62 sn yapın. Yazı tipi: paketle gelen Montserrat (SIL OFL, `packages/core/assets/fonts`, `FONTS_DIR` ile değiştirilebilir).
+
 ## Yayınlama
 
 - Her platformun **ayrı kuyruğu** ve hız sınırı vardır (`publish-instagram`, `publish-facebook`, `publish-tiktok`, `publish-youtube`). Bir platformdaki hata diğerlerini durdurmaz.
